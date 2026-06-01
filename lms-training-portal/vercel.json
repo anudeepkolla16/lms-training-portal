@@ -1,0 +1,9 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "build",
+  "env": {
+    "REACT_APP_CLIENT_ID": "@react_app_client_id",
+    "REACT_APP_TENANT_ID": "@react_app_tenant_id",
+    "REACT_APP_AUTHORITY": "@react_app_authority"
+  }
+}
