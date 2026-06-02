@@ -26,14 +26,23 @@ const AppContent = () => {
 
   React.useEffect(() => {
     if (isAuthenticated && accounts.length > 0) {
+      const spScopes = ["https://sarasanalytics.sharepoint.com/AllSites.Read", "https://sarasanalytics.sharepoint.com/AllSites.Write"];
       instance.acquireTokenSilent({
-        scopes: ["https://sarasanalytics.sharepoint.com/AllSites.Read", "https://sarasanalytics.sharepoint.com/AllSites.Write"],
+        scopes: spScopes,
         account: accounts[0]
       }).then(response => {
         setAccessToken(response.accessToken);
-      }).catch(err => {
-        console.error('Token acquisition failed:', err);
-        setTokenError(err.errorCode);
+      }).catch(() => {
+        // Consent required - show popup
+        instance.acquireTokenPopup({
+          scopes: spScopes,
+          account: accounts[0]
+        }).then(response => {
+          setAccessToken(response.accessToken);
+        }).catch(popupErr => {
+          console.error('Token acquisition failed:', popupErr);
+          setTokenError(popupErr.errorCode);
+        });
       });
     }
   }, [isAuthenticated, accounts, instance]);
