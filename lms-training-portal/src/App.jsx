@@ -117,7 +117,6 @@ const AppContent = () => {
     );
   }
 
-  const roleColor = ROLE_COLORS[userRole] || '#10b981';
   const navColor = userRole === 'HR'
     ? 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)'
     : userRole === 'Manager'

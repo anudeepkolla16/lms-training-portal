@@ -1,7 +1,7 @@
 import React from 'react';
 import { getCourses, getAllEnrollments, enrollEmployee } from '../services/sharePointAPI';
 
-const thStyle = {
+const _thStyle = {
   padding: '10px 14px',
   textAlign: 'left',
   background: '#fffbeb',
@@ -12,7 +12,7 @@ const thStyle = {
   whiteSpace: 'nowrap'
 };
 
-const tdStyle = {
+const _tdStyle = {
   padding: '10px 14px',
   borderBottom: '1px solid #f1f5f9',
   color: '#374151',

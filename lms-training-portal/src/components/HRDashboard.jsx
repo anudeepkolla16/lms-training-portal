@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments } from '../services/sharePointAPI';
+import { getAllEnrollments } from '../services/sharePointAPI';
 
 const thStyle = {
   padding: '10px 14px',
@@ -18,26 +18,6 @@ const tdStyle = {
   color: '#374151',
   fontSize: '13px',
   verticalAlign: 'middle'
-};
-
-const inputStyle = {
-  width: '100%',
-  padding: '9px 12px',
-  border: '1px solid #d1d5db',
-  borderRadius: '6px',
-  fontSize: '14px',
-  color: '#374151',
-  background: 'white',
-  boxSizing: 'border-box',
-  outline: 'none'
-};
-
-const labelStyle = {
-  display: 'block',
-  marginBottom: '5px',
-  fontWeight: '600',
-  color: '#374151',
-  fontSize: '13px'
 };
 
 const btnStyle = {
