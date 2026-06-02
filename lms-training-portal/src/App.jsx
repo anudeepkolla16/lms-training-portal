@@ -36,7 +36,7 @@ const AppContent = () => {
         }
       });
     }
-  }, [isAuthenticated, accounts, instance, accessToken, inProgress]);
+  }, [isAuthenticated, accounts, instance, accessToken]);
 
   // Get user role
   React.useEffect(() => {
