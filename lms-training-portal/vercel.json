@@ -1,4 +1,10 @@
 {
   "buildCommand": "npm run build",
-  "startCommand": "npm start"
+  "outputDirectory": "build",
+  "routes": [
+    {
+      "src": "^/(?!api)(.*)",
+      "dest": "/api"
+    }
+  ]
 }
