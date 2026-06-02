@@ -1,21 +1,29 @@
 import axios from 'axios';
 
-const SHAREPOINT_SITE = 'https://sarasanalytics.sharepoint.com/sites/training-library';
+// Use backend proxy to avoid CORS issues
+const callProxy = async (accessToken, endpoint, method = 'GET', data = null) => {
+  const baseUrl = window.location.hostname === 'localhost'
+    ? 'http://localhost:3001'
+    : '';
+
+  const response = await axios.post(`${baseUrl}/api/proxy`, {
+    token: accessToken,
+    endpoint,
+    method,
+    data
+  });
+  return response.data;
+};
 
 // Get employee's enrollments
 export const getMyEnrollments = async (accessToken, userEmail) => {
   try {
     const encodedEmail = encodeURIComponent(userEmail);
-    const response = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Employee Enrollments')/items?$filter=EmployeeID eq '${encodedEmail}'&$top=1000`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
+    const data = await callProxy(
+      accessToken,
+      `/_api/web/lists/getbytitle('Employee Enrollments')/items?$filter=EmployeeID eq '${encodedEmail}'&$top=1000`
     );
-    return response.data.value || [];
+    return data.value || [];
   } catch (error) {
     console.error('Error fetching enrollments:', error);
     return [];
@@ -25,16 +33,11 @@ export const getMyEnrollments = async (accessToken, userEmail) => {
 // Get all courses
 export const getCourses = async (accessToken) => {
   try {
-    const response = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Courses')/items?$top=1000`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
+    const data = await callProxy(
+      accessToken,
+      `/_api/web/lists/getbytitle('Courses')/items?$top=1000`
     );
-    return response.data.value || [];
+    return data.value || [];
   } catch (error) {
     console.error('Error fetching courses:', error);
     return [];
@@ -44,16 +47,11 @@ export const getCourses = async (accessToken) => {
 // Get all enrollments (Admin/HR)
 export const getAllEnrollments = async (accessToken) => {
   try {
-    const response = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Employee Enrollments')/items?$top=5000`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
+    const data = await callProxy(
+      accessToken,
+      `/_api/web/lists/getbytitle('Employee Enrollments')/items?$top=5000`
     );
-    return response.data.value || [];
+    return data.value || [];
   } catch (error) {
     console.error('Error fetching all enrollments:', error);
     return [];
@@ -63,32 +61,16 @@ export const getAllEnrollments = async (accessToken) => {
 // Update enrollment status
 export const updateEnrollmentStatus = async (accessToken, enrollmentId, status) => {
   try {
-    const digestResponse = await axios.post(
-      `${SHAREPOINT_SITE}/_api/contextinfo`,
-      {},
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
-    );
-    const digest = digestResponse.data.FormDigestValue;
+    const digestData = await callProxy(accessToken, `/_api/contextinfo`, 'POST');
+    const digest = digestData.FormDigestValue;
 
-    const response = await axios.patch(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Employee Enrollments')/items(${enrollmentId})`,
-      { Status: status },
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'X-RequestDigest': digest,
-          'If-Match': '*'
-        }
-      }
+    const data = await callProxy(
+      accessToken,
+      `/_api/web/lists/getbytitle('Employee Enrollments')/items(${enrollmentId})`,
+      'PATCH',
+      { Status: status }
     );
-    return response.data;
+    return data;
   } catch (error) {
     console.error('Error updating enrollment:', error);
     throw error;
@@ -98,31 +80,16 @@ export const updateEnrollmentStatus = async (accessToken, enrollmentId, status) 
 // Enroll an employee
 export const enrollEmployee = async (accessToken, enrollmentData) => {
   try {
-    const digestResponse = await axios.post(
-      `${SHAREPOINT_SITE}/_api/contextinfo`,
-      {},
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
-    );
-    const digest = digestResponse.data.FormDigestValue;
+    const digestData = await callProxy(accessToken, `/_api/contextinfo`, 'POST');
+    const digest = digestData.FormDigestValue;
 
-    const response = await axios.post(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Employee Enrollments')/items`,
-      enrollmentData,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'X-RequestDigest': digest
-        }
-      }
+    const data = await callProxy(
+      accessToken,
+      `/_api/web/lists/getbytitle('Employee Enrollments')/items`,
+      'POST',
+      { ...enrollmentData, __metadata: { type: "SP.Data.Employee_x0020_EnrollmentsListItem" } }
     );
-    return response.data;
+    return data;
   } catch (error) {
     console.error('Error enrolling employee:', error);
     throw error;
@@ -132,31 +99,16 @@ export const enrollEmployee = async (accessToken, enrollmentData) => {
 // Create a course
 export const createCourse = async (accessToken, courseData) => {
   try {
-    const digestResponse = await axios.post(
-      `${SHAREPOINT_SITE}/_api/contextinfo`,
-      {},
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
-    );
-    const digest = digestResponse.data.FormDigestValue;
+    const digestData = await callProxy(accessToken, `/_api/contextinfo`, 'POST');
+    const digest = digestData.FormDigestValue;
 
-    const response = await axios.post(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Courses')/items`,
-      courseData,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'X-RequestDigest': digest
-        }
-      }
+    const data = await callProxy(
+      accessToken,
+      `/_api/web/lists/getbytitle('Courses')/items`,
+      'POST',
+      { ...courseData, __metadata: { type: "SP.Data.CoursesListItem" } }
     );
-    return response.data;
+    return data;
   } catch (error) {
     console.error('Error creating course:', error);
     throw error;
@@ -167,22 +119,14 @@ export const createCourse = async (accessToken, courseData) => {
 export const getUserRole = async (accessToken, userEmail) => {
   try {
     const lowerEmail = userEmail.toLowerCase();
-    const response = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('UserRoles')/items?$top=100`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
+    const data = await callProxy(
+      accessToken,
+      `/_api/web/lists/getbytitle('UserRoles')/items?$top=100`
     );
-    const items = response.data.value || [];
-
-    // Find matching email case-insensitively
+    const items = data.value || [];
     const match = items.find(item =>
       (item.Title || '').toLowerCase() === lowerEmail
     );
-
     return match ? (match.Role || 'Employee') : 'Employee';
   } catch (error) {
     console.error('Error fetching user role:', error);
@@ -193,16 +137,11 @@ export const getUserRole = async (accessToken, userEmail) => {
 // Get course details
 export const getCourseDetails = async (accessToken, courseId) => {
   try {
-    const response = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Courses')/items(${courseId})`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
+    const data = await callProxy(
+      accessToken,
+      `/_api/web/lists/getbytitle('Courses')/items(${courseId})`
     );
-    return response.data;
+    return data;
   } catch (error) {
     console.error('Error fetching course details:', error);
     return null;
