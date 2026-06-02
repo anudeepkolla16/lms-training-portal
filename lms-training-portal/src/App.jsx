@@ -12,11 +12,14 @@ const msalConfig = {
   auth: {
     clientId: 'f0ba86a7-a739-4977-b9ba-1f1c1269f219',
     authority: 'https://login.microsoftonline.com/06d5c541-26b2-4dc8-ac6f-eeba90783202',
-    redirectUri: 'https://lms-training-portal-o1mmjayp-anudeep-kolla-s-projects.vercel.app'
+    redirectUri: window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://lms-training-portal.vercel.app'
   },
   cache: {
     cacheLocation: "sessionStorage",
     storeAuthStateInCookie: false,
+  },
+  system: {
+    allowNativeBroker: false
   }
 };
 
@@ -32,21 +35,20 @@ const AppContent = () => {
 
   React.useEffect(() => {
     if (isAuthenticated && accounts.length > 0) {
-      const spScopes = ["https://sarasanalytics.sharepoint.com/.default"];
-      instance.acquireTokenSilent({
-        scopes: spScopes,
-        account: accounts[0]
-      }).then(response => {
+      const tokenRequest = {
+        scopes: ["https://sarasanalytics.sharepoint.com/.default"],
+        account: accounts[0],
+        forceRefresh: false
+      };
+
+      instance.acquireTokenSilent(tokenRequest).then(response => {
         setAccessToken(response.accessToken);
-      }).catch(() => {
-        // Consent required - show popup
-        instance.acquireTokenPopup({
-          scopes: spScopes,
-          account: accounts[0]
-        }).then(response => {
+      }).catch(error => {
+        console.log('Silent token acquisition failed, trying popup:', error);
+        instance.acquireTokenPopup(tokenRequest).then(response => {
           setAccessToken(response.accessToken);
         }).catch(popupErr => {
-          console.error('Token acquisition failed:', popupErr);
+          console.error('Popup token acquisition failed:', popupErr);
           setTokenError(popupErr.errorCode);
         });
       });
