@@ -8,10 +8,7 @@ import ManagerDashboard from './components/ManagerDashboard';
 import { getUserRole } from './services/sharePointAPI';
 import './App.css';
 
-const SP_SCOPES = [
-  "https://sarasanalytics.sharepoint.com/AllSites.Read",
-  "https://sarasanalytics.sharepoint.com/AllSites.Write"
-];
+const SP_SCOPES = ["Sites.ReadWrite.All"];
 
 const AppContent = () => {
   const isAuthenticated = useIsAuthenticated();
