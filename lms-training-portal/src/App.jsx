@@ -32,7 +32,7 @@ const AppContent = () => {
 
   React.useEffect(() => {
     if (isAuthenticated && accounts.length > 0) {
-      const spScopes = ["Sites.ReadWrite.All", "User.Read"];
+      const spScopes = ["https://sarasanalytics.sharepoint.com/AllSites.Read", "https://sarasanalytics.sharepoint.com/AllSites.Write"];
       instance.acquireTokenSilent({
         scopes: spScopes,
         account: accounts[0]
@@ -57,17 +57,8 @@ const AppContent = () => {
   React.useEffect(() => {
     if (accessToken && accounts.length > 0) {
       const email = accounts[0].username || accounts[0].idTokenClaims?.preferred_username || accounts[0].idTokenClaims?.email || '';
-      console.log('DEBUG - Account info:', JSON.stringify({
-        username: accounts[0].username,
-        name: accounts[0].name,
-        preferred_username: accounts[0].idTokenClaims?.preferred_username,
-        email: accounts[0].idTokenClaims?.email,
-        upn: accounts[0].idTokenClaims?.upn
-      }));
-      console.log('DEBUG - Email used for role lookup:', email);
       setRoleLoading(true);
       getUserRole(accessToken, email).then(role => {
-        console.log('DEBUG - Role returned:', role);
         setUserRole(role);
         setRoleLoading(false);
       });
