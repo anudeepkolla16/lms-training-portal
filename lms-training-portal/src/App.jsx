@@ -22,8 +22,10 @@ const AppContent = () => {
     if (isAuthenticated && accounts.length > 0 && !accessToken) {
       instance.acquireTokenSilent({
         scopes: SP_SCOPES,
-        account: accounts[0]
+        account: accounts[0],
+        forceRefresh: true
       }).then(res => {
+        console.log('Graph token acquired, audience:', res.accessToken.split('.').map((p,i)=>i===1?JSON.parse(atob(p)):null).find(Boolean)?.aud);
         setAccessToken(res.accessToken);
       }).catch(err => {
         if (err instanceof InteractionRequiredAuthError) {
