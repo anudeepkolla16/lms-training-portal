@@ -1,201 +1,150 @@
 import axios from 'axios';
 
-const SHAREPOINT_SITE = process.env.REACT_APP_SHAREPOINT_SITE || 'https://sarasanalytics.sharepoint.com/sites/training-library';
+const GRAPH = 'https://graph.microsoft.com/v1.0';
+const SITE_HOST = 'sarasanalytics.sharepoint.com';
+const SITE_PATH = '/sites/training-library';
+
+let cachedSiteId = null;
+
+const getSiteId = async (token) => {
+  if (cachedSiteId) return cachedSiteId;
+  const res = await axios.get(`${GRAPH}/sites/${SITE_HOST}:${SITE_PATH}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  cachedSiteId = res.data.id;
+  return cachedSiteId;
+};
+
+const mapItem = (item) => ({ Id: item.id, id: item.id, ...item.fields });
+
+const headers = (token) => ({
+  Authorization: `Bearer ${token}`,
+  Accept: 'application/json',
+  'Content-Type': 'application/json'
+});
 
 // Get employee's enrollments
-export const getMyEnrollments = async (accessToken, userEmail) => {
+export const getMyEnrollments = async (token, userEmail) => {
   try {
-    const encodedEmail = encodeURIComponent(userEmail);
-    const response = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Employee Enrollments')/items?$filter=EmployeeID eq '${encodedEmail}'&$top=1000`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items?$expand=fields&$filter=fields/EmployeeID eq '${userEmail}'&$top=1000`,
+      { headers: headers(token) }
     );
-    return response.data.value || [];
-  } catch (error) {
-    console.error('Error fetching enrollments:', error);
+    return (res.data.value || []).map(mapItem);
+  } catch (e) {
+    console.error('Error fetching enrollments:', e);
     return [];
   }
 };
 
 // Get all courses
-export const getCourses = async (accessToken) => {
+export const getCourses = async (token) => {
   try {
-    const response = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Courses')/items?$top=1000`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/Courses/items?$expand=fields&$top=1000`,
+      { headers: headers(token) }
     );
-    return response.data.value || [];
-  } catch (error) {
-    console.error('Error fetching courses:', error);
+    return (res.data.value || []).map(mapItem);
+  } catch (e) {
+    console.error('Error fetching courses:', e);
     return [];
   }
 };
 
-// Update enrollment status (mark complete)
-export const updateEnrollmentStatus = async (accessToken, enrollmentId, status) => {
+// Get all enrollments (Admin/HR)
+export const getAllEnrollments = async (token) => {
   try {
-    const response = await axios.post(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Employee Enrollments')/items(${enrollmentId})`,
-      { Status: status },
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'X-HTTP-Method': 'MERGE',
-          'If-Match': '*'
-        }
-      }
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items?$expand=fields&$top=5000`,
+      { headers: headers(token) }
     );
-    return response.data;
-  } catch (error) {
-    console.error('Error updating enrollment:', error);
-    throw error;
+    return (res.data.value || []).map(mapItem);
+  } catch (e) {
+    console.error('Error fetching all enrollments:', e);
+    return [];
   }
 };
 
-// Get course details
-export const getCourseDetails = async (accessToken, courseId) => {
+// Update enrollment status
+export const updateEnrollmentStatus = async (token, enrollmentId, status) => {
   try {
-    const response = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Courses')/items(${courseId})`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
+    const siteId = await getSiteId(token);
+    const res = await axios.patch(
+      `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items/${enrollmentId}`,
+      { fields: { Status: status } },
+      { headers: headers(token) }
     );
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching course details:', error);
-    return null;
+    return res.data;
+  } catch (e) {
+    console.error('Error updating enrollment:', e);
+    throw e;
+  }
+};
+
+// Enroll an employee
+export const enrollEmployee = async (token, enrollmentData) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.post(
+      `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items`,
+      { fields: enrollmentData },
+      { headers: headers(token) }
+    );
+    return res.data;
+  } catch (e) {
+    console.error('Error enrolling employee:', e);
+    throw e;
+  }
+};
+
+// Create a course
+export const createCourse = async (token, courseData) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.post(
+      `${GRAPH}/sites/${siteId}/lists/Courses/items`,
+      { fields: courseData },
+      { headers: headers(token) }
+    );
+    return res.data;
+  } catch (e) {
+    console.error('Error creating course:', e);
+    throw e;
   }
 };
 
 // Get user role from UserRoles list
-export const getUserRole = async (accessToken, userEmail) => {
+export const getUserRole = async (token, userEmail) => {
   try {
-    const lowerEmail = userEmail.toLowerCase();
-    const encodedEmail = encodeURIComponent(lowerEmail);
-    const response = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('UserRoles')/items?$filter=tolower(Title) eq '${encodedEmail}'&$top=1`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
+    const siteId = await getSiteId(token);
+    const email = userEmail.toLowerCase();
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/UserRoles/items?$expand=fields&$top=100`,
+      { headers: headers(token) }
     );
-    const items = response.data.value || [];
-    return items.length > 0 ? (items[0].Role || 'Employee') : 'Employee';
-  } catch (error) {
-    console.error('Error fetching user role:', error);
+    const items = res.data.value || [];
+    const match = items.find(i => (i.fields?.Title || '').toLowerCase() === email);
+    return match ? (match.fields?.Role || 'Employee') : 'Employee';
+  } catch (e) {
+    console.error('Error fetching user role:', e);
     return 'Employee';
   }
 };
 
-// Get all enrollments (admin/HR use)
-export const getAllEnrollments = async (accessToken) => {
+// Get course details
+export const getCourseDetails = async (token, courseId) => {
   try {
-    const response = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Employee Enrollments')/items?$top=5000`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/Courses/items/${courseId}?$expand=fields`,
+      { headers: headers(token) }
     );
-    return response.data.value || [];
-  } catch (error) {
-    console.error('Error fetching all enrollments:', error);
-    return [];
-  }
-};
-
-// Enroll an employee (POST to Employee Enrollments list)
-export const enrollEmployee = async (accessToken, enrollmentData) => {
-  try {
-    // Get request digest
-    const digestResponse = await axios.post(
-      `${SHAREPOINT_SITE}/_api/contextinfo`,
-      {},
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
-    );
-    const requestDigest = digestResponse.data.FormDigestValue;
-
-    const response = await axios.post(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Employee Enrollments')/items`,
-      {
-        __metadata: { type: "SP.Data.Employee_x0020_EnrollmentsListItem" },
-        ...enrollmentData
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json;odata=verbose',
-          'X-RequestDigest': requestDigest
-        }
-      }
-    );
-    return response.data;
-  } catch (error) {
-    console.error('Error enrolling employee:', error);
-    throw error;
-  }
-};
-
-// Create a new course (POST to Courses list)
-export const createCourse = async (accessToken, courseData) => {
-  try {
-    // Get request digest
-    const digestResponse = await axios.post(
-      `${SHAREPOINT_SITE}/_api/contextinfo`,
-      {},
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
-    );
-    const requestDigest = digestResponse.data.FormDigestValue;
-
-    const response = await axios.post(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Courses')/items`,
-      {
-        __metadata: { type: "SP.Data.CoursesListItem" },
-        ...courseData
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json;odata=verbose',
-          'X-RequestDigest': requestDigest
-        }
-      }
-    );
-    return response.data;
-  } catch (error) {
-    console.error('Error creating course:', error);
-    throw error;
+    return mapItem(res.data);
+  } catch (e) {
+    console.error('Error fetching course details:', e);
+    return null;
   }
 };

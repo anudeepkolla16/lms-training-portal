@@ -32,7 +32,7 @@ const AppContent = () => {
 
   React.useEffect(() => {
     if (isAuthenticated && accounts.length > 0) {
-      const spScopes = ["https://sarasanalytics.sharepoint.com/AllSites.Read", "https://sarasanalytics.sharepoint.com/AllSites.Write"];
+      const spScopes = ["Sites.ReadWrite.All", "User.Read"];
       instance.acquireTokenSilent({
         scopes: spScopes,
         account: accounts[0]
