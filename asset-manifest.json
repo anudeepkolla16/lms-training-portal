@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/lms-training-portal/static/css/main.0c595549.css",
-    "main.js": "/lms-training-portal/static/js/main.26a54a1e.js",
+    "main.js": "/lms-training-portal/static/js/main.cfcc5369.js",
     "index.html": "/lms-training-portal/index.html",
     "main.0c595549.css.map": "/lms-training-portal/static/css/main.0c595549.css.map",
-    "main.26a54a1e.js.map": "/lms-training-portal/static/js/main.26a54a1e.js.map"
+    "main.cfcc5369.js.map": "/lms-training-portal/static/js/main.cfcc5369.js.map"
   },
   "entrypoints": [
     "static/css/main.0c595549.css",
-    "static/js/main.26a54a1e.js"
+    "static/js/main.cfcc5369.js"
   ]
 }
