@@ -86,9 +86,10 @@ export const getCourseDetails = async (accessToken, courseId) => {
 // Get user role from UserRoles list
 export const getUserRole = async (accessToken, userEmail) => {
   try {
-    const encodedEmail = encodeURIComponent(userEmail);
+    const lowerEmail = userEmail.toLowerCase();
+    const encodedEmail = encodeURIComponent(lowerEmail);
     const response = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('UserRoles')/items?$filter=Title eq '${encodedEmail}'&$top=1`,
+      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('UserRoles')/items?$filter=tolower(Title) eq '${encodedEmail}'&$top=1`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
