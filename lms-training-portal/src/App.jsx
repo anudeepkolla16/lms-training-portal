@@ -27,7 +27,7 @@ const AppContent = () => {
   React.useEffect(() => {
     if (isAuthenticated && accounts.length > 0) {
       instance.acquireTokenSilent({
-        scopes: ["User.Read", "Sites.Read.All", "Sites.ReadWrite.All"],
+        scopes: ["https://sarasanalytics.sharepoint.com/AllSites.Read", "https://sarasanalytics.sharepoint.com/AllSites.Write"],
         account: accounts[0]
       }).then(response => {
         setAccessToken(response.accessToken);
@@ -55,7 +55,7 @@ const AppContent = () => {
           </p>
           <button
             onClick={() => instance.loginPopup({
-              scopes: ["User.Read", "Sites.Read.All", "Sites.ReadWrite.All"]
+              scopes: ["User.Read"]
             })}
             style={{
               background: '#0ea5e9',
