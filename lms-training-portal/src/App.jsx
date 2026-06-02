@@ -1,6 +1,7 @@
 import React from 'react';
 import { MsalProvider, useMsal, useIsAuthenticated } from "@azure/msal-react";
 import { InteractionRequiredAuthError } from "@azure/msal-browser";
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import HRDashboard from './components/HRDashboard';
@@ -156,6 +157,7 @@ function App({ msalInstance }) {
   return (
     <MsalProvider instance={msalInstance}>
       <AppContent />
+      <SpeedInsights />
     </MsalProvider>
   );
 }
