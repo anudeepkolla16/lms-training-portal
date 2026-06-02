@@ -17,14 +17,13 @@ const msalConfig = {
       : 'https://lms-training-portal.vercel.app',
   },
   cache: {
-    cacheLocation: "sessionStorage",
-    storeAuthStateInCookie: false,
+    cacheLocation: "localStorage",
+    storeAuthStateInCookie: true,
   }
 };
 
 const pca = new PublicClientApplication(msalConfig);
 
-// SharePoint scopes - separate from login scopes
 const SP_SCOPES = [
   "https://sarasanalytics.sharepoint.com/AllSites.Read",
   "https://sarasanalytics.sharepoint.com/AllSites.Write"
@@ -34,34 +33,36 @@ const AppContent = () => {
   const isAuthenticated = useIsAuthenticated();
   const { instance, accounts } = useMsal();
   const [accessToken, setAccessToken] = React.useState(null);
-  const [needsConsent, setNeedsConsent] = React.useState(false);
   const [userRole, setUserRole] = React.useState(null);
   const [roleLoading, setRoleLoading] = React.useState(false);
+  const [signing, setSigning] = React.useState(false);
+  const [error, setError] = React.useState(null);
 
-  // Step 2: After login, get SharePoint token silently
+  // Get SharePoint token after login
   React.useEffect(() => {
     if (isAuthenticated && accounts.length > 0 && !accessToken) {
       instance.acquireTokenSilent({
         scopes: SP_SCOPES,
         account: accounts[0]
-      }).then(response => {
-        setAccessToken(response.accessToken);
-        setNeedsConsent(false);
+      }).then(res => {
+        setAccessToken(res.accessToken);
       }).catch(err => {
         if (err instanceof InteractionRequiredAuthError) {
-          setNeedsConsent(true);
-        } else {
-          console.error('Token error:', err);
-          setNeedsConsent(true);
+          instance.acquireTokenPopup({
+            scopes: SP_SCOPES,
+            account: accounts[0]
+          }).then(res => {
+            setAccessToken(res.accessToken);
+          }).catch(e => console.error('SP token error:', e));
         }
       });
     }
   }, [isAuthenticated, accounts, instance, accessToken]);
 
-  // Step 3: Get user role once we have token
+  // Get user role
   React.useEffect(() => {
     if (accessToken && accounts.length > 0 && userRole === null) {
-      const email = accounts[0].username || accounts[0].idTokenClaims?.preferred_username || '';
+      const email = accounts[0].username || '';
       setRoleLoading(true);
       getUserRole(accessToken, email).then(role => {
         setUserRole(role);
@@ -70,21 +71,19 @@ const AppContent = () => {
     }
   }, [accessToken, accounts, userRole]);
 
-  // Grant SharePoint consent via popup (separate from login redirect)
-  const grantConsent = async () => {
+  // Login with popup only - no redirect, no state issues
+  const handleLogin = async () => {
+    setSigning(true);
+    setError(null);
     try {
-      const response = await instance.acquireTokenPopup({
-        scopes: SP_SCOPES,
-        account: accounts[0]
-      });
-      setAccessToken(response.accessToken);
-      setNeedsConsent(false);
+      await instance.loginPopup({ scopes: ["User.Read"] });
     } catch (err) {
-      console.error('Consent popup failed:', err);
+      console.error('Login error:', err);
+      setError('Sign in failed. Please try again.');
     }
+    setSigning(false);
   };
 
-  // Step 1: Not logged in → show login screen
   if (!isAuthenticated) {
     return (
       <div style={{
@@ -106,65 +105,26 @@ const AppContent = () => {
           <p style={{ color: '#9ca3af', marginBottom: '32px', fontSize: '14px' }}>
             Sign in to access your training dashboard
           </p>
+          {error && (
+            <p style={{ color: '#ef4444', marginBottom: '16px', fontSize: '13px' }}>{error}</p>
+          )}
           <button
-            onClick={() => instance.loginRedirect({ scopes: ["User.Read"] })}
+            onClick={handleLogin}
+            disabled={signing}
             style={{
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
+              background: signing ? '#93c5fd' : 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
               color: 'white', padding: '14px 32px', borderRadius: '10px',
               border: 'none', fontSize: '16px', fontWeight: 'bold',
-              cursor: 'pointer', width: '100%', letterSpacing: '0.3px'
+              cursor: signing ? 'not-allowed' : 'pointer', width: '100%'
             }}
           >
-            Sign In with Microsoft 365
+            {signing ? '⏳ Signing in...' : 'Sign In with Microsoft 365'}
           </button>
         </div>
       </div>
     );
   }
 
-  // Needs SharePoint consent → show consent screen
-  if (needsConsent) {
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100vh', background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)'
-      }}>
-        <div style={{
-          background: 'white', padding: '48px', borderRadius: '16px',
-          textAlign: 'center', maxWidth: '420px', width: '90%',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
-        }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔑</div>
-          <h2 style={{ color: '#1f2937', marginBottom: '12px' }}>One More Step</h2>
-          <p style={{ color: '#6b7280', marginBottom: '32px', lineHeight: '1.6' }}>
-            Grant access to SharePoint training data to view your courses and enrollments.
-          </p>
-          <button
-            onClick={grantConsent}
-            style={{
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              color: 'white', padding: '14px 32px', borderRadius: '10px',
-              border: 'none', fontSize: '16px', fontWeight: 'bold',
-              cursor: 'pointer', width: '100%'
-            }}
-          >
-            ✓ Grant Access to Training Data
-          </button>
-          <button
-            onClick={() => instance.logout()}
-            style={{
-              background: 'none', color: '#9ca3af', border: 'none',
-              marginTop: '16px', cursor: 'pointer', fontSize: '14px'
-            }}
-          >
-            Sign out
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Loading token or role
   if (!accessToken || roleLoading || userRole === null) {
     return (
       <div style={{
@@ -177,7 +137,6 @@ const AppContent = () => {
     );
   }
 
-  // Role-based nav colors
   const navColor = userRole === 'HR'
     ? 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)'
     : userRole === 'Manager'
@@ -214,7 +173,7 @@ const AppContent = () => {
             {accounts[0]?.name || accounts[0]?.username}
           </span>
           <button
-            onClick={() => instance.logoutRedirect()}
+            onClick={() => instance.logoutPopup()}
             style={{
               background: 'rgba(255,255,255,0.2)', color: 'white',
               padding: '8px 16px', borderRadius: '8px', border: 'none',
