@@ -2,6 +2,7 @@
   "buildCommand": "npm --prefix lms-training-portal install && npm --prefix lms-training-portal run build",
   "outputDirectory": "lms-training-portal/build",
   "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
