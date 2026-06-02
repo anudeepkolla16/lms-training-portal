@@ -1,16 +1,11 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "build",
-  "env": {
-    "REACT_APP_CLIENT_ID": "@REACT_APP_CLIENT_ID",
-    "REACT_APP_TENANT_ID": "@REACT_APP_TENANT_ID",
-    "REACT_APP_AUTHORITY": "@REACT_APP_AUTHORITY",
-    "REACT_APP_SHAREPOINT_SITE": "@REACT_APP_SHAREPOINT_SITE"
-  },
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/:path*",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "cleanUrls": true
 }
