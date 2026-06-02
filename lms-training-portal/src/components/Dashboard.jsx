@@ -63,7 +63,7 @@ const Dashboard = ({ accessToken, user }) => {
       {/* Header */}
       <div style={{ marginBottom: '40px' }}>
         <h1 style={{ margin: '0 0 8px 0', color: '#1f2937', fontSize: '32px' }}>
-          Welcome, {user.givenName}! 👋
+          Welcome, {user.givenName || user.name || user.username?.split('@')[0]}! 👋
         </h1>
         <p style={{ margin: '0', color: '#6b7280' }}>
           Your training progress and assigned courses
