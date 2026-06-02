@@ -56,9 +56,18 @@ const AppContent = () => {
   // Fetch user role once accessToken is available
   React.useEffect(() => {
     if (accessToken && accounts.length > 0) {
-      const email = accounts[0].username || accounts[0].mail || accounts[0].idTokenClaims?.preferred_username || '';
+      const email = accounts[0].username || accounts[0].idTokenClaims?.preferred_username || accounts[0].idTokenClaims?.email || '';
+      console.log('DEBUG - Account info:', JSON.stringify({
+        username: accounts[0].username,
+        name: accounts[0].name,
+        preferred_username: accounts[0].idTokenClaims?.preferred_username,
+        email: accounts[0].idTokenClaims?.email,
+        upn: accounts[0].idTokenClaims?.upn
+      }));
+      console.log('DEBUG - Email used for role lookup:', email);
       setRoleLoading(true);
       getUserRole(accessToken, email).then(role => {
+        console.log('DEBUG - Role returned:', role);
         setUserRole(role);
         setRoleLoading(false);
       });
@@ -172,7 +181,7 @@ const AppContent = () => {
             </span>
           )}
           <span style={{ fontSize: '13px', opacity: 0.85 }}>
-            {accounts[0]?.name || accounts[0]?.username}
+            {accounts[0]?.username}
           </span>
           <button
             onClick={() => instance.logout()}
