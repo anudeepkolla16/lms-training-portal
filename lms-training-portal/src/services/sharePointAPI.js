@@ -44,17 +44,6 @@ export const getCourses = async (accessToken) => {
 // Update enrollment status (mark complete)
 export const updateEnrollmentStatus = async (accessToken, enrollmentId, status) => {
   try {
-    // Get item with digest
-    const itemResponse = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Employee Enrollments')/items(${enrollmentId})`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
-    );
-
     const response = await axios.post(
       `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Employee Enrollments')/items(${enrollmentId})`,
       { Status: status },

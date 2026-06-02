@@ -9,6 +9,7 @@ const Dashboard = ({ accessToken, user }) => {
   const [error, setError] = useState(null);
   const [updating, setUpdating] = useState(false);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadEnrollments();
   }, []);
@@ -43,7 +44,6 @@ const Dashboard = ({ accessToken, user }) => {
 
   const completedCount = enrollments.filter(e => e.Status === 'Completed').length;
   const activeCount = enrollments.filter(e => e.Status === 'Active').length;
-  const notStartedCount = enrollments.filter(e => e.Status === 'Not Started').length;
   const completionRate = enrollments.length > 0 ? Math.round((completedCount / enrollments.length) * 100) : 0;
 
   return (
