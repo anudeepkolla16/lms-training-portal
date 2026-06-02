@@ -1,6 +1,6 @@
 import React from 'react';
 import { MsalProvider, useMsal, useIsAuthenticated } from "@azure/msal-react";
-import { PublicClientApplication } from "@azure/msal-browser";
+import { PublicClientApplication, InteractionRequiredAuthError } from "@azure/msal-browser";
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import HRDashboard from './components/HRDashboard';
@@ -8,16 +8,13 @@ import ManagerDashboard from './components/ManagerDashboard';
 import { getUserRole } from './services/sharePointAPI';
 import './App.css';
 
-const redirectUri = window.location.hostname === 'localhost'
-  ? 'http://localhost:3000'
-  : 'https://lms-training-portal.vercel.app';
-
 const msalConfig = {
   auth: {
     clientId: 'f0ba86a7-a739-4977-b9ba-1f1c1269f219',
     authority: 'https://login.microsoftonline.com/06d5c541-26b2-4dc8-ac6f-eeba90783202',
-    redirectUri,
-    navigateToLoginRequestUrl: true
+    redirectUri: window.location.hostname === 'localhost'
+      ? 'http://localhost:3000'
+      : 'https://lms-training-portal.vercel.app',
   },
   cache: {
     cacheLocation: "sessionStorage",
@@ -27,36 +24,43 @@ const msalConfig = {
 
 const pca = new PublicClientApplication(msalConfig);
 
-// Handle redirect promise on page load
-pca.initialize().then(() => {
-  pca.handleRedirectPromise().catch(err => {
-    console.error('Redirect error:', err);
-  });
-});
+// SharePoint scopes - separate from login scopes
+const SP_SCOPES = [
+  "https://sarasanalytics.sharepoint.com/AllSites.Read",
+  "https://sarasanalytics.sharepoint.com/AllSites.Write"
+];
 
 const AppContent = () => {
   const isAuthenticated = useIsAuthenticated();
   const { instance, accounts } = useMsal();
   const [accessToken, setAccessToken] = React.useState(null);
+  const [needsConsent, setNeedsConsent] = React.useState(false);
   const [userRole, setUserRole] = React.useState(null);
   const [roleLoading, setRoleLoading] = React.useState(false);
 
+  // Step 2: After login, get SharePoint token silently
   React.useEffect(() => {
-    if (isAuthenticated && accounts.length > 0) {
+    if (isAuthenticated && accounts.length > 0 && !accessToken) {
       instance.acquireTokenSilent({
-        scopes: ["https://sarasanalytics.sharepoint.com/AllSites.Read", "https://sarasanalytics.sharepoint.com/AllSites.Write"],
+        scopes: SP_SCOPES,
         account: accounts[0]
       }).then(response => {
         setAccessToken(response.accessToken);
+        setNeedsConsent(false);
       }).catch(err => {
-        console.error('Token error:', err);
-        // Don't redirect - show error instead to avoid redirect loops
+        if (err instanceof InteractionRequiredAuthError) {
+          setNeedsConsent(true);
+        } else {
+          console.error('Token error:', err);
+          setNeedsConsent(true);
+        }
       });
     }
-  }, [isAuthenticated, accounts, instance]);
+  }, [isAuthenticated, accounts, instance, accessToken]);
 
+  // Step 3: Get user role once we have token
   React.useEffect(() => {
-    if (accessToken && accounts.length > 0) {
+    if (accessToken && accounts.length > 0 && userRole === null) {
       const email = accounts[0].username || accounts[0].idTokenClaims?.preferred_username || '';
       setRoleLoading(true);
       getUserRole(accessToken, email).then(role => {
@@ -64,34 +68,51 @@ const AppContent = () => {
         setRoleLoading(false);
       });
     }
-  }, [accessToken, accounts]);
+  }, [accessToken, accounts, userRole]);
 
+  // Grant SharePoint consent via popup (separate from login redirect)
+  const grantConsent = async () => {
+    try {
+      const response = await instance.acquireTokenPopup({
+        scopes: SP_SCOPES,
+        account: accounts[0]
+      });
+      setAccessToken(response.accessToken);
+      setNeedsConsent(false);
+    } catch (err) {
+      console.error('Consent popup failed:', err);
+    }
+  };
+
+  // Step 1: Not logged in → show login screen
   if (!isAuthenticated) {
     return (
       <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)'
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)'
       }}>
-        <div style={{ background: 'white', padding: '40px', borderRadius: '12px', textAlign: 'center', maxWidth: '400px', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}>
-          <h1 style={{ color: '#0ea5e9', marginBottom: '20px', fontSize: '28px' }}>📚 Training Portal</h1>
-          <p style={{ color: '#6b7280', marginBottom: '30px', lineHeight: '1.6' }}>
-            Saras Analytics Learning Management System
+        <div style={{
+          background: 'white', padding: '48px', borderRadius: '16px',
+          textAlign: 'center', maxWidth: '420px', width: '90%',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+        }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📚</div>
+          <h1 style={{ color: '#0ea5e9', marginBottom: '8px', fontSize: '28px', fontWeight: 'bold' }}>
+            Training Portal
+          </h1>
+          <p style={{ color: '#6b7280', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>
+            Saras Analytics
+          </p>
+          <p style={{ color: '#9ca3af', marginBottom: '32px', fontSize: '14px' }}>
+            Sign in to access your training dashboard
           </p>
           <button
             onClick={() => instance.loginRedirect({ scopes: ["User.Read"] })}
             style={{
-              background: '#0ea5e9',
-              color: 'white',
-              padding: '12px 32px',
-              borderRadius: '8px',
-              border: 'none',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              cursor: 'pointer'
+              background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
+              color: 'white', padding: '14px 32px', borderRadius: '10px',
+              border: 'none', fontSize: '16px', fontWeight: 'bold',
+              cursor: 'pointer', width: '100%', letterSpacing: '0.3px'
             }}
           >
             Sign In with Microsoft 365
@@ -101,83 +122,104 @@ const AppContent = () => {
     );
   }
 
+  // Needs SharePoint consent → show consent screen
+  if (needsConsent) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)'
+      }}>
+        <div style={{
+          background: 'white', padding: '48px', borderRadius: '16px',
+          textAlign: 'center', maxWidth: '420px', width: '90%',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+        }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔑</div>
+          <h2 style={{ color: '#1f2937', marginBottom: '12px' }}>One More Step</h2>
+          <p style={{ color: '#6b7280', marginBottom: '32px', lineHeight: '1.6' }}>
+            Grant access to SharePoint training data to view your courses and enrollments.
+          </p>
+          <button
+            onClick={grantConsent}
+            style={{
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: 'white', padding: '14px 32px', borderRadius: '10px',
+              border: 'none', fontSize: '16px', fontWeight: 'bold',
+              cursor: 'pointer', width: '100%'
+            }}
+          >
+            ✓ Grant Access to Training Data
+          </button>
+          <button
+            onClick={() => instance.logout()}
+            style={{
+              background: 'none', color: '#9ca3af', border: 'none',
+              marginTop: '16px', cursor: 'pointer', fontSize: '14px'
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading token or role
+  if (!accessToken || roleLoading || userRole === null) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', background: '#f9fafb', flexDirection: 'column', gap: '16px'
+      }}>
+        <div style={{ fontSize: '48px' }}>📚</div>
+        <p style={{ color: '#6b7280', fontSize: '16px' }}>Loading your dashboard...</p>
+      </div>
+    );
+  }
+
+  // Role-based nav colors
   const navColor = userRole === 'HR'
     ? 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)'
     : userRole === 'Manager'
       ? 'linear-gradient(135deg, #f59e0b 0%, #fb923c 100%)'
       : userRole === 'Admin'
         ? 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)'
-        : 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)';
+        : 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
 
   const renderDashboard = () => {
-    if (!accessToken) {
-      return (
-        <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
-          Loading your training dashboard...
-        </div>
-      );
-    }
-    if (roleLoading || userRole === null) {
-      return (
-        <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
-          Loading role configuration...
-        </div>
-      );
-    }
     switch (userRole) {
-      case 'Admin':
-        return <AdminDashboard accessToken={accessToken} user={accounts[0]} />;
-      case 'HR':
-        return <HRDashboard accessToken={accessToken} user={accounts[0]} />;
-      case 'Manager':
-        return <ManagerDashboard accessToken={accessToken} user={accounts[0]} />;
-      default:
-        return <Dashboard accessToken={accessToken} user={accounts[0]} />;
+      case 'Admin': return <AdminDashboard accessToken={accessToken} user={accounts[0]} />;
+      case 'HR': return <HRDashboard accessToken={accessToken} user={accounts[0]} />;
+      case 'Manager': return <ManagerDashboard accessToken={accessToken} user={accounts[0]} />;
+      default: return <Dashboard accessToken={accessToken} user={accounts[0]} />;
     }
   };
 
   return (
     <div>
       <nav style={{
-        background: navColor,
-        color: 'white',
-        padding: '16px 20px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+        background: navColor, color: 'white', padding: '16px 24px',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.15)'
       }}>
-        <h2 style={{ margin: '0' }}>📚 Training Portal</h2>
+        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>📚 Training Portal</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {userRole && (
-            <span style={{
-              background: 'rgba(255,255,255,0.25)',
-              color: 'white',
-              padding: '4px 12px',
-              borderRadius: '20px',
-              fontSize: '13px',
-              fontWeight: '700',
-              letterSpacing: '0.5px'
-            }}>
-              {userRole}
-            </span>
-          )}
-          <span style={{ fontSize: '13px', opacity: 0.85 }}>
-            {accounts[0]?.username}
+          <span style={{
+            background: 'rgba(255,255,255,0.25)', padding: '4px 14px',
+            borderRadius: '20px', fontSize: '13px', fontWeight: '700'
+          }}>
+            {userRole}
+          </span>
+          <span style={{ fontSize: '13px', opacity: 0.9 }}>
+            {accounts[0]?.name || accounts[0]?.username}
           </span>
           <button
-            onClick={() => instance.logout()}
+            onClick={() => instance.logoutRedirect()}
             style={{
-              background: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              padding: '8px 16px',
-              borderRadius: '6px',
-              border: 'none',
-              cursor: 'pointer',
-              transition: 'background 0.2s'
+              background: 'rgba(255,255,255,0.2)', color: 'white',
+              padding: '8px 16px', borderRadius: '8px', border: 'none',
+              cursor: 'pointer', fontWeight: '600', fontSize: '13px'
             }}
-            onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.3)'}
-            onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
           >
             Sign Out
           </button>
