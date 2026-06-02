@@ -1,28 +1,12 @@
 import React from 'react';
 import { MsalProvider, useMsal, useIsAuthenticated } from "@azure/msal-react";
-import { PublicClientApplication, InteractionRequiredAuthError, InteractionStatus } from "@azure/msal-browser";
+import { InteractionRequiredAuthError, InteractionStatus } from "@azure/msal-browser";
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import HRDashboard from './components/HRDashboard';
 import ManagerDashboard from './components/ManagerDashboard';
 import { getUserRole } from './services/sharePointAPI';
 import './App.css';
-
-const msalConfig = {
-  auth: {
-    clientId: 'f0ba86a7-a739-4977-b9ba-1f1c1269f219',
-    authority: 'https://login.microsoftonline.com/06d5c541-26b2-4dc8-ac6f-eeba90783202',
-    redirectUri: window.location.hostname === 'localhost'
-      ? 'http://localhost:3000'
-      : 'https://lms-training-portal.vercel.app',
-  },
-  cache: {
-    cacheLocation: "localStorage",
-    storeAuthStateInCookie: true,
-  }
-};
-
-const pca = new PublicClientApplication(msalConfig);
 
 const SP_SCOPES = [
   "https://sarasanalytics.sharepoint.com/AllSites.Read",
@@ -183,9 +167,9 @@ const AppContent = () => {
   );
 };
 
-function App() {
+function App({ msalInstance }) {
   return (
-    <MsalProvider instance={pca}>
+    <MsalProvider instance={msalInstance}>
       <AppContent />
     </MsalProvider>
   );
