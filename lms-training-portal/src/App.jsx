@@ -12,7 +12,7 @@ const msalConfig = {
   auth: {
     clientId: 'f0ba86a7-a739-4977-b9ba-1f1c1269f219',
     authority: 'https://login.microsoftonline.com/06d5c541-26b2-4dc8-ac6f-eeba90783202',
-    redirectUri: 'https://anudeepkolla16.github.io/lms-training-portal'
+    redirectUri: 'https://lms-training-portal-o1mmjayp-anudeep-kolla-s-projects.vercel.app'
   },
   cache: {
     cacheLocation: "sessionStorage",
