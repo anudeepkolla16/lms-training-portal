@@ -1,5 +1,3 @@
 {
-  "buildCommand": "mkdir -p /vercel/output/static && cp -r public/* /vercel/output/ && ls -R /vercel/output/",
-  "outputDirectory": null,
-  "cleanUrls": false
+  "outputDirectory": "public"
 }
