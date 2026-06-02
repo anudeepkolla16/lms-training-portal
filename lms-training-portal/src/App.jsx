@@ -29,14 +29,34 @@ const SP_SCOPES = [
   "https://sarasanalytics.sharepoint.com/AllSites.Write"
 ];
 
+const LoadingScreen = ({ message }) => (
+  <div style={{
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    height: '100vh', background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
+    flexDirection: 'column', gap: '16px'
+  }}>
+    <div style={{ fontSize: '48px' }}>📚</div>
+    <p style={{ color: 'white', fontSize: '18px', fontWeight: '600' }}>{message || 'Loading...'}</p>
+  </div>
+);
+
 const AppContent = () => {
   const isAuthenticated = useIsAuthenticated();
   const { instance, accounts } = useMsal();
   const [accessToken, setAccessToken] = React.useState(null);
   const [userRole, setUserRole] = React.useState(null);
   const [roleLoading, setRoleLoading] = React.useState(false);
-  const [signing, setSigning] = React.useState(false);
-  const [error, setError] = React.useState(null);
+  const [authProcessing, setAuthProcessing] = React.useState(true);
+
+  // Wait for MSAL to process any pending redirect on startup
+  React.useEffect(() => {
+    instance.handleRedirectPromise().then(() => {
+      setAuthProcessing(false);
+    }).catch(err => {
+      console.error('Redirect handling error:', err);
+      setAuthProcessing(false);
+    });
+  }, [instance]);
 
   // Get SharePoint token after login
   React.useEffect(() => {
@@ -51,9 +71,8 @@ const AppContent = () => {
           instance.acquireTokenPopup({
             scopes: SP_SCOPES,
             account: accounts[0]
-          }).then(res => {
-            setAccessToken(res.accessToken);
-          }).catch(e => console.error('SP token error:', e));
+          }).then(res => setAccessToken(res.accessToken))
+            .catch(e => console.error('SP popup error:', e));
         }
       });
     }
@@ -71,19 +90,12 @@ const AppContent = () => {
     }
   }, [accessToken, accounts, userRole]);
 
-  // Login with popup only - no redirect, no state issues
-  const handleLogin = async () => {
-    setSigning(true);
-    setError(null);
-    try {
-      await instance.loginPopup({ scopes: ["User.Read"] });
-    } catch (err) {
-      console.error('Login error:', err);
-      setError('Sign in failed. Please try again.');
-    }
-    setSigning(false);
-  };
+  // Still processing redirect - wait
+  if (authProcessing) {
+    return <LoadingScreen message="Completing sign in..." />;
+  }
 
+  // Not logged in
   if (!isAuthenticated) {
     return (
       <div style={{
@@ -95,46 +107,35 @@ const AppContent = () => {
           textAlign: 'center', maxWidth: '420px', width: '90%',
           boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
         }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📚</div>
+          <div style={{ fontSize: '56px', marginBottom: '16px' }}>📚</div>
           <h1 style={{ color: '#0ea5e9', marginBottom: '8px', fontSize: '28px', fontWeight: 'bold' }}>
             Training Portal
           </h1>
-          <p style={{ color: '#6b7280', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>
+          <p style={{ color: '#6b7280', marginBottom: '8px', fontSize: '15px', fontWeight: '600' }}>
             Saras Analytics
           </p>
           <p style={{ color: '#9ca3af', marginBottom: '32px', fontSize: '14px' }}>
             Sign in to access your training dashboard
           </p>
-          {error && (
-            <p style={{ color: '#ef4444', marginBottom: '16px', fontSize: '13px' }}>{error}</p>
-          )}
           <button
-            onClick={handleLogin}
-            disabled={signing}
+            onClick={() => instance.loginRedirect({ scopes: ["User.Read"] })}
             style={{
-              background: signing ? '#93c5fd' : 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
+              background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
               color: 'white', padding: '14px 32px', borderRadius: '10px',
               border: 'none', fontSize: '16px', fontWeight: 'bold',
-              cursor: signing ? 'not-allowed' : 'pointer', width: '100%'
+              cursor: 'pointer', width: '100%'
             }}
           >
-            {signing ? '⏳ Signing in...' : 'Sign In with Microsoft 365'}
+            Sign In with Microsoft 365
           </button>
         </div>
       </div>
     );
   }
 
+  // Loading dashboard
   if (!accessToken || roleLoading || userRole === null) {
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100vh', background: '#f9fafb', flexDirection: 'column', gap: '16px'
-      }}>
-        <div style={{ fontSize: '48px' }}>📚</div>
-        <p style={{ color: '#6b7280', fontSize: '16px' }}>Loading your dashboard...</p>
-      </div>
-    );
+    return <LoadingScreen message="Loading your dashboard..." />;
   }
 
   const navColor = userRole === 'HR'
@@ -173,7 +174,7 @@ const AppContent = () => {
             {accounts[0]?.name || accounts[0]?.username}
           </span>
           <button
-            onClick={() => instance.logoutPopup()}
+            onClick={() => instance.logoutRedirect()}
             style={{
               background: 'rgba(255,255,255,0.2)', color: 'white',
               padding: '8px 16px', borderRadius: '8px', border: 'none',
