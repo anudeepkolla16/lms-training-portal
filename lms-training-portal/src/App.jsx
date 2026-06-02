@@ -1,6 +1,6 @@
 import React from 'react';
-import { MsalProvider, useMsal, useIsAuthenticated } from "@azure/msal-react";
-import { PublicClientApplication } from "@azure/msal-browser";
+import { MsalProvider, useMsal, useIsAuthenticated, AuthenticatedTemplate, UnauthenticatedTemplate } from "@azure/msal-react";
+import { PublicClientApplication, EventType } from "@azure/msal-browser";
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import HRDashboard from './components/HRDashboard';
@@ -8,22 +8,31 @@ import ManagerDashboard from './components/ManagerDashboard';
 import { getUserRole } from './services/sharePointAPI';
 import './App.css';
 
+const redirectUri = window.location.hostname === 'localhost'
+  ? 'http://localhost:3000'
+  : 'https://lms-training-portal.vercel.app';
+
 const msalConfig = {
   auth: {
     clientId: 'f0ba86a7-a739-4977-b9ba-1f1c1269f219',
     authority: 'https://login.microsoftonline.com/06d5c541-26b2-4dc8-ac6f-eeba90783202',
-    redirectUri: window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://lms-training-portal.vercel.app'
+    redirectUri,
+    navigateToLoginRequestUrl: true
   },
   cache: {
-    cacheLocation: "sessionStorage",
-    storeAuthStateInCookie: false,
-  },
-  system: {
-    allowNativeBroker: false
+    cacheLocation: "localStorage",
+    storeAuthStateInCookie: true,
   }
 };
 
 const pca = new PublicClientApplication(msalConfig);
+
+// Handle redirect promise on page load
+pca.initialize().then(() => {
+  pca.handleRedirectPromise().catch(err => {
+    console.error('Redirect error:', err);
+  });
+});
 
 const AppContent = () => {
   const isAuthenticated = useIsAuthenticated();
@@ -36,29 +45,20 @@ const AppContent = () => {
   React.useEffect(() => {
     if (isAuthenticated && accounts.length > 0) {
       const tokenRequest = {
-        scopes: ["https://sarasanalytics.sharepoint.com/.default"],
-        account: accounts[0],
-        forceRefresh: false
+        scopes: ["https://sarasanalytics.sharepoint.com/AllSites.Read", "https://sarasanalytics.sharepoint.com/AllSites.Write"],
+        account: accounts[0]
       };
-
       instance.acquireTokenSilent(tokenRequest).then(response => {
         setAccessToken(response.accessToken);
-      }).catch(error => {
-        console.log('Silent token acquisition failed, trying popup:', error);
-        instance.acquireTokenPopup(tokenRequest).then(response => {
-          setAccessToken(response.accessToken);
-        }).catch(popupErr => {
-          console.error('Popup token acquisition failed:', popupErr);
-          setTokenError(popupErr.errorCode);
-        });
+      }).catch(() => {
+        instance.acquireTokenRedirect(tokenRequest);
       });
     }
   }, [isAuthenticated, accounts, instance]);
 
-  // Fetch user role once accessToken is available
   React.useEffect(() => {
     if (accessToken && accounts.length > 0) {
-      const email = accounts[0].username || accounts[0].idTokenClaims?.preferred_username || accounts[0].idTokenClaims?.email || '';
+      const email = accounts[0].username || accounts[0].idTokenClaims?.preferred_username || '';
       setRoleLoading(true);
       getUserRole(accessToken, email).then(role => {
         setUserRole(role);
@@ -80,12 +80,10 @@ const AppContent = () => {
         <div style={{ background: 'white', padding: '40px', borderRadius: '12px', textAlign: 'center', maxWidth: '400px', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}>
           <h1 style={{ color: '#0ea5e9', marginBottom: '20px', fontSize: '28px' }}>📚 Training Portal</h1>
           <p style={{ color: '#6b7280', marginBottom: '30px', lineHeight: '1.6' }}>
-            Sign in to view your assigned training courses and track your progress.
+            Saras Analytics Learning Management System
           </p>
           <button
-            onClick={() => instance.loginPopup({
-              scopes: ["User.Read"]
-            })}
+            onClick={() => instance.loginRedirect({ scopes: ["User.Read"] })}
             style={{
               background: '#0ea5e9',
               color: 'white',
@@ -94,17 +92,14 @@ const AppContent = () => {
               border: 'none',
               fontSize: '16px',
               fontWeight: 'bold',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
+              cursor: 'pointer'
             }}
-            onMouseEnter={(e) => e.target.style.background = '#0284c7'}
-            onMouseLeave={(e) => e.target.style.background = '#0ea5e9'}
           >
             Sign In with Microsoft 365
           </button>
           {tokenError && (
             <p style={{ color: '#ef4444', marginTop: '20px', fontSize: '12px' }}>
-              Error: {tokenError}. Make sure the app is registered in Azure AD.
+              Error: {tokenError}
             </p>
           )}
         </div>
