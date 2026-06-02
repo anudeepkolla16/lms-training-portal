@@ -1,6 +1,6 @@
 import React from 'react';
 import { MsalProvider, useMsal, useIsAuthenticated } from "@azure/msal-react";
-import { InteractionRequiredAuthError, InteractionStatus } from "@azure/msal-browser";
+import { InteractionRequiredAuthError } from "@azure/msal-browser";
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import HRDashboard from './components/HRDashboard';
@@ -15,14 +15,14 @@ const SP_SCOPES = [
 
 const AppContent = () => {
   const isAuthenticated = useIsAuthenticated();
-  const { instance, accounts, inProgress } = useMsal();
+  const { instance, accounts } = useMsal();
   const [accessToken, setAccessToken] = React.useState(null);
   const [userRole, setUserRole] = React.useState(null);
   const [roleLoading, setRoleLoading] = React.useState(false);
 
   // Get SharePoint token after login completes
   React.useEffect(() => {
-    if (isAuthenticated && accounts.length > 0 && !accessToken && inProgress === InteractionStatus.None) {
+    if (isAuthenticated && accounts.length > 0 && !accessToken) {
       instance.acquireTokenSilent({
         scopes: SP_SCOPES,
         account: accounts[0]
@@ -50,20 +50,6 @@ const AppContent = () => {
     }
   }, [accessToken, accounts, userRole]);
 
-  // MSAL is processing a redirect - show loading
-  if (inProgress === InteractionStatus.HandleRedirect || inProgress === InteractionStatus.Login) {
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100vh', background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
-        flexDirection: 'column', gap: '16px'
-      }}>
-        <div style={{ fontSize: '48px' }}>📚</div>
-        <p style={{ color: 'white', fontSize: '18px', fontWeight: '600' }}>Signing you in...</p>
-      </div>
-    );
-  }
-
   // Not logged in
   if (!isAuthenticated) {
     return (
@@ -87,7 +73,7 @@ const AppContent = () => {
             Sign in to access your training dashboard
           </p>
           <button
-            onClick={() => instance.loginRedirect({ scopes: ["User.Read"] })}
+            onClick={() => instance.loginPopup({ scopes: ["User.Read"] }).catch(console.error)}
             style={{
               background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
               color: 'white', padding: '14px 32px', borderRadius: '10px',

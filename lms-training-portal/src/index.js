@@ -19,21 +19,19 @@ const msalConfig = {
 
 const pca = new PublicClientApplication(msalConfig);
 
-// Initialize MSAL, handle any pending redirect, THEN render React
-pca.initialize()
-  .then(() => pca.handleRedirectPromise())
-  .then((authResult) => {
-    if (authResult) {
-      console.log('Redirect auth successful:', authResult.account?.username);
-    }
-  })
-  .catch((error) => {
-    console.error('Auth error:', error);
-  })
-  .finally(() => {
-    // Always render the app, regardless of auth result
+pca.initialize().then(() => {
+  // Detect if this is MSAL's popup callback window
+  // If yes: just process the auth code, don't render the full app
+  // If no: render the full app normally
+  const isPopupWindow = window.opener && window.opener !== window;
+  const hasAuthCode = window.location.hash.includes('code=') || window.location.search.includes('code=');
+
+  if (isPopupWindow && hasAuthCode) {
+    // This is the MSAL popup callback - process auth and let MSAL close it
+    pca.handleRedirectPromise().catch(err => console.error('Popup auth error:', err));
+  } else {
+    // Main window - render the full React app
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(
-      <App msalInstance={pca} />
-    );
-  });
+    root.render(<App msalInstance={pca} />);
+  }
+});
