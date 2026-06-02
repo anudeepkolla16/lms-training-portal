@@ -1,13 +1,6 @@
 {
   "public": "build",
-  "routes": [
-    {
-      "src": "^/static/(.*)",
-      "dest": "/static/$1"
-    },
-    {
-      "src": "^/(.*)",
-      "dest": "/index.html"
-    }
-  ]
+  "cleanUrls": false,
+  "trailingSlash": false,
+  "errorPage": "404.html"
 }
