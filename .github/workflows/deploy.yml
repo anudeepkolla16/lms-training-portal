@@ -22,14 +22,8 @@ jobs:
         working-directory: lms-training-portal
         run: npm install
       
-      - name: Build with PUBLIC_URL
+      - name: Build
         working-directory: lms-training-portal
-        env:
-          PUBLIC_URL: /lms-training-portal/
-          REACT_APP_CLIENT_ID: ${{ secrets.REACT_APP_CLIENT_ID }}
-          REACT_APP_TENANT_ID: ${{ secrets.REACT_APP_TENANT_ID }}
-          REACT_APP_AUTHORITY: ${{ secrets.REACT_APP_AUTHORITY }}
-          REACT_APP_SHAREPOINT_SITE: ${{ secrets.REACT_APP_SHAREPOINT_SITE }}
         run: npm run build
       
       - name: Deploy to GitHub Pages

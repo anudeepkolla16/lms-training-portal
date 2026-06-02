@@ -6,9 +6,9 @@ import './App.css';
 
 const msalConfig = {
   auth: {
-    clientId: process.env.REACT_APP_CLIENT_ID,
-    authority: process.env.REACT_APP_AUTHORITY,
-    redirectUri: window.location.origin
+    clientId: 'f0ba86a7-a739-4977-b9ba-1f1c1269f219',
+    authority: 'https://login.microsoftonline.com/06d5c541-26b2-4dc8-ac6f-eeba90783202',
+    redirectUri: 'https://anudeepkolla16.github.io/lms-training-portal'
   },
   cache: {
     cacheLocation: "sessionStorage",
