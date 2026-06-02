@@ -1,6 +1,6 @@
 import React from 'react';
 import { MsalProvider, useMsal, useIsAuthenticated } from "@azure/msal-react";
-import { PublicClientApplication, InteractionRequiredAuthError } from "@azure/msal-browser";
+import { PublicClientApplication, InteractionRequiredAuthError, InteractionStatus } from "@azure/msal-browser";
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import HRDashboard from './components/HRDashboard';
@@ -29,38 +29,16 @@ const SP_SCOPES = [
   "https://sarasanalytics.sharepoint.com/AllSites.Write"
 ];
 
-const LoadingScreen = ({ message }) => (
-  <div style={{
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    height: '100vh', background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
-    flexDirection: 'column', gap: '16px'
-  }}>
-    <div style={{ fontSize: '48px' }}>📚</div>
-    <p style={{ color: 'white', fontSize: '18px', fontWeight: '600' }}>{message || 'Loading...'}</p>
-  </div>
-);
-
 const AppContent = () => {
   const isAuthenticated = useIsAuthenticated();
-  const { instance, accounts } = useMsal();
+  const { instance, accounts, inProgress } = useMsal();
   const [accessToken, setAccessToken] = React.useState(null);
   const [userRole, setUserRole] = React.useState(null);
   const [roleLoading, setRoleLoading] = React.useState(false);
-  const [authProcessing, setAuthProcessing] = React.useState(true);
 
-  // Wait for MSAL to process any pending redirect on startup
+  // Get SharePoint token after login completes
   React.useEffect(() => {
-    instance.handleRedirectPromise().then(() => {
-      setAuthProcessing(false);
-    }).catch(err => {
-      console.error('Redirect handling error:', err);
-      setAuthProcessing(false);
-    });
-  }, [instance]);
-
-  // Get SharePoint token after login
-  React.useEffect(() => {
-    if (isAuthenticated && accounts.length > 0 && !accessToken) {
+    if (isAuthenticated && accounts.length > 0 && !accessToken && inProgress === InteractionStatus.None) {
       instance.acquireTokenSilent({
         scopes: SP_SCOPES,
         account: accounts[0]
@@ -68,15 +46,13 @@ const AppContent = () => {
         setAccessToken(res.accessToken);
       }).catch(err => {
         if (err instanceof InteractionRequiredAuthError) {
-          instance.acquireTokenPopup({
-            scopes: SP_SCOPES,
-            account: accounts[0]
-          }).then(res => setAccessToken(res.accessToken))
-            .catch(e => console.error('SP popup error:', e));
+          instance.acquireTokenPopup({ scopes: SP_SCOPES, account: accounts[0] })
+            .then(res => setAccessToken(res.accessToken))
+            .catch(e => console.error('SP token error:', e));
         }
       });
     }
-  }, [isAuthenticated, accounts, instance, accessToken]);
+  }, [isAuthenticated, accounts, instance, accessToken, inProgress]);
 
   // Get user role
   React.useEffect(() => {
@@ -90,9 +66,18 @@ const AppContent = () => {
     }
   }, [accessToken, accounts, userRole]);
 
-  // Still processing redirect - wait
-  if (authProcessing) {
-    return <LoadingScreen message="Completing sign in..." />;
+  // MSAL is processing a redirect - show loading
+  if (inProgress === InteractionStatus.HandleRedirect || inProgress === InteractionStatus.Login) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
+        flexDirection: 'column', gap: '16px'
+      }}>
+        <div style={{ fontSize: '48px' }}>📚</div>
+        <p style={{ color: 'white', fontSize: '18px', fontWeight: '600' }}>Signing you in...</p>
+      </div>
+    );
   }
 
   // Not logged in
@@ -133,9 +118,17 @@ const AppContent = () => {
     );
   }
 
-  // Loading dashboard
+  // Loading dashboard data
   if (!accessToken || roleLoading || userRole === null) {
-    return <LoadingScreen message="Loading your dashboard..." />;
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', background: '#f9fafb', flexDirection: 'column', gap: '16px'
+      }}>
+        <div style={{ fontSize: '48px' }}>📚</div>
+        <p style={{ color: '#6b7280', fontSize: '16px' }}>Loading your dashboard...</p>
+      </div>
+    );
   }
 
   const navColor = userRole === 'HR'
