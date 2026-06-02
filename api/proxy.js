@@ -29,6 +29,8 @@ module.exports = async function handler(req, res) {
 
     const spRes = await fetch(url, options);
     const text = await spRes.text();
+    console.log(`SP ${method} ${endpoint.substring(0, 60)} → ${spRes.status}`);
+    if (spRes.status >= 400) console.error('SP error body:', text.substring(0, 500));
 
     try {
       return res.status(spRes.status).json(JSON.parse(text));
