@@ -8,29 +8,32 @@ let cachedSiteId = null;
 
 const getSiteId = async (token) => {
   if (cachedSiteId) return cachedSiteId;
-  try {
-    // Format 1: path-based
-    const res = await axios.get(
-      `${GRAPH}/sites/${SITE_HOST}:${SITE_PATH}`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    cachedSiteId = res.data.id;
-    return cachedSiteId;
-  } catch (e1) {
-    console.error('Site lookup format1 failed:', e1?.response?.status, JSON.stringify(e1?.response?.data));
+  const h = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
+
+  // Try 3 URL formats - Graph requires trailing colon for path-based addressing
+  const formats = [
+    `${GRAPH}/sites/${SITE_HOST}:${SITE_PATH}:`,          // correct: trailing colon
+    `${GRAPH}/sites/${SITE_HOST}:${SITE_PATH}`,            // without trailing colon
+    `${GRAPH}/sites?search=training-library`,              // search fallback
+  ];
+
+  for (let i = 0; i < formats.length; i++) {
     try {
-      // Format 2: search
-      const res2 = await axios.get(
-        `${GRAPH}/sites?search=training-library`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const site = (res2.data.value || []).find(s => s.webUrl && s.webUrl.includes('training-library'));
-      if (site) { cachedSiteId = site.id; return cachedSiteId; }
-    } catch (e2) {
-      console.error('Site lookup format2 failed:', e2?.response?.status, JSON.stringify(e2?.response?.data));
+      const res = await axios.get(formats[i], h);
+      if (i === 2) {
+        // Search result - find matching site
+        const site = (res.data.value || []).find(s => s.webUrl?.includes('training-library'));
+        if (site) { cachedSiteId = site.id; console.log('Site found via search:', cachedSiteId); return cachedSiteId; }
+      } else {
+        cachedSiteId = res.data.id;
+        console.log(`Site found via format${i+1}:`, cachedSiteId);
+        return cachedSiteId;
+      }
+    } catch (e) {
+      console.warn(`Format ${i+1} failed (${e?.response?.status}):`, e?.response?.data?.error?.code, e?.response?.data?.error?.message);
     }
-    throw new Error('Cannot find SharePoint site');
   }
+  throw new Error('Cannot find SharePoint site via any method');
 };
 
 const g = (token) => ({ headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' } });

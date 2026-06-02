@@ -8,7 +8,7 @@ import ManagerDashboard from './components/ManagerDashboard';
 import { getUserRole } from './services/sharePointAPI';
 import './App.css';
 
-const SP_SCOPES = ["Sites.ReadWrite.All"];
+const SP_SCOPES = ["https://graph.microsoft.com/Sites.ReadWrite.All"];
 
 const AppContent = () => {
   const isAuthenticated = useIsAuthenticated();
