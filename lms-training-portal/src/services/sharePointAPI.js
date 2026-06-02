@@ -1,26 +1,6 @@
 import axios from 'axios';
 
-const SHAREPOINT_SITE = process.env.REACT_APP_SHAREPOINT_SITE || 'https://sarasanalytics.sharepoint.com/sites/training-library';
-
-// Get request digest for POST/PATCH operations
-const getRequestDigest = async (accessToken) => {
-  try {
-    const response = await axios.post(
-      `${SHAREPOINT_SITE}/_api/contextinfo`,
-      {},
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
-      }
-    );
-    return response.data.FormDigestValue;
-  } catch (error) {
-    console.error('Error getting request digest:', error);
-    throw error;
-  }
-};
+const SHAREPOINT_SITE = 'https://sarasanalytics.sharepoint.com/sites/training-library';
 
 // Get employee's enrollments
 export const getMyEnrollments = async (accessToken, userEmail) => {
@@ -83,7 +63,18 @@ export const getAllEnrollments = async (accessToken) => {
 // Update enrollment status
 export const updateEnrollmentStatus = async (accessToken, enrollmentId, status) => {
   try {
-    const digest = await getRequestDigest(accessToken);
+    const digestResponse = await axios.post(
+      `${SHAREPOINT_SITE}/_api/contextinfo`,
+      {},
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json'
+        }
+      }
+    );
+    const digest = digestResponse.data.FormDigestValue;
+
     const response = await axios.patch(
       `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Employee Enrollments')/items(${enrollmentId})`,
       { Status: status },
@@ -107,7 +98,18 @@ export const updateEnrollmentStatus = async (accessToken, enrollmentId, status) 
 // Enroll an employee
 export const enrollEmployee = async (accessToken, enrollmentData) => {
   try {
-    const digest = await getRequestDigest(accessToken);
+    const digestResponse = await axios.post(
+      `${SHAREPOINT_SITE}/_api/contextinfo`,
+      {},
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json'
+        }
+      }
+    );
+    const digest = digestResponse.data.FormDigestValue;
+
     const response = await axios.post(
       `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Employee Enrollments')/items`,
       enrollmentData,
@@ -130,7 +132,18 @@ export const enrollEmployee = async (accessToken, enrollmentData) => {
 // Create a course
 export const createCourse = async (accessToken, courseData) => {
   try {
-    const digest = await getRequestDigest(accessToken);
+    const digestResponse = await axios.post(
+      `${SHAREPOINT_SITE}/_api/contextinfo`,
+      {},
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json'
+        }
+      }
+    );
+    const digest = digestResponse.data.FormDigestValue;
+
     const response = await axios.post(
       `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('Courses')/items`,
       courseData,
@@ -155,7 +168,7 @@ export const getUserRole = async (accessToken, userEmail) => {
   try {
     const lowerEmail = userEmail.toLowerCase();
     const response = await axios.get(
-      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('UserRoles')/items?$filter=substringof('${lowerEmail}', tolower(Title))&$top=1`,
+      `${SHAREPOINT_SITE}/_api/web/lists/getbytitle('UserRoles')/items?$top=100`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -164,10 +177,13 @@ export const getUserRole = async (accessToken, userEmail) => {
       }
     );
     const items = response.data.value || [];
-    if (items.length > 0) {
-      return items[0].Role || 'Employee';
-    }
-    return 'Employee';
+
+    // Find matching email case-insensitively
+    const match = items.find(item =>
+      (item.Title || '').toLowerCase() === lowerEmail
+    );
+
+    return match ? (match.Role || 'Employee') : 'Employee';
   } catch (error) {
     console.error('Error fetching user role:', error);
     return 'Employee';
