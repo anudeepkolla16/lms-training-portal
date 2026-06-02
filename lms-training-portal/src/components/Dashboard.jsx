@@ -9,10 +9,22 @@ const Dashboard = ({ accessToken, user }) => {
   const [error, setError] = useState(null);
   const [updating, setUpdating] = useState(false);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    loadEnrollments();
-  }, []);
+    const fetchEnrollments = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await getMyEnrollments(accessToken, user.mail);
+        setEnrollments(data);
+      } catch (err) {
+        setError('Failed to load enrollments. Please try again.');
+        console.error('Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEnrollments();
+  }, [accessToken, user.mail]);
 
   const loadEnrollments = async () => {
     setLoading(true);
