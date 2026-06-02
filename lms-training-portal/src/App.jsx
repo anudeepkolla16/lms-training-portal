@@ -20,8 +20,8 @@ const msalConfig = {
     navigateToLoginRequestUrl: true
   },
   cache: {
-    cacheLocation: "localStorage",
-    storeAuthStateInCookie: true,
+    cacheLocation: "sessionStorage",
+    storeAuthStateInCookie: false,
   }
 };
 
@@ -43,14 +43,14 @@ const AppContent = () => {
 
   React.useEffect(() => {
     if (isAuthenticated && accounts.length > 0) {
-      const tokenRequest = {
+      instance.acquireTokenSilent({
         scopes: ["https://sarasanalytics.sharepoint.com/AllSites.Read", "https://sarasanalytics.sharepoint.com/AllSites.Write"],
         account: accounts[0]
-      };
-      instance.acquireTokenSilent(tokenRequest).then(response => {
+      }).then(response => {
         setAccessToken(response.accessToken);
-      }).catch(() => {
-        instance.acquireTokenRedirect(tokenRequest);
+      }).catch(err => {
+        console.error('Token error:', err);
+        // Don't redirect - show error instead to avoid redirect loops
       });
     }
   }, [isAuthenticated, accounts, instance]);
