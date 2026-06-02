@@ -1,7 +1,0 @@
-{
-  "buildCommand": "cd lms-training-portal && npm install && npm run build",
-  "outputDirectory": "lms-training-portal/build",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
-}
