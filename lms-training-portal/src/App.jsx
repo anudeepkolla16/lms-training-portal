@@ -1,6 +1,6 @@
 import React from 'react';
-import { MsalProvider, useMsal, useIsAuthenticated, AuthenticatedTemplate, UnauthenticatedTemplate } from "@azure/msal-react";
-import { PublicClientApplication, EventType } from "@azure/msal-browser";
+import { MsalProvider, useMsal, useIsAuthenticated } from "@azure/msal-react";
+import { PublicClientApplication } from "@azure/msal-browser";
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import HRDashboard from './components/HRDashboard';
@@ -38,7 +38,6 @@ const AppContent = () => {
   const isAuthenticated = useIsAuthenticated();
   const { instance, accounts } = useMsal();
   const [accessToken, setAccessToken] = React.useState(null);
-  const [tokenError, setTokenError] = React.useState(null);
   const [userRole, setUserRole] = React.useState(null);
   const [roleLoading, setRoleLoading] = React.useState(false);
 
@@ -97,11 +96,6 @@ const AppContent = () => {
           >
             Sign In with Microsoft 365
           </button>
-          {tokenError && (
-            <p style={{ color: '#ef4444', marginTop: '20px', fontSize: '12px' }}>
-              Error: {tokenError}
-            </p>
-          )}
         </div>
       </div>
     );
