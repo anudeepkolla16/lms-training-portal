@@ -1,24 +1,6 @@
 import React from 'react';
 import { getCourses, getAllEnrollments, enrollEmployee } from '../services/sharePointAPI';
 
-const _thStyle = {
-  padding: '10px 14px',
-  textAlign: 'left',
-  background: '#fffbeb',
-  color: '#374151',
-  fontWeight: '600',
-  fontSize: '13px',
-  borderBottom: '2px solid #e2e8f0',
-  whiteSpace: 'nowrap'
-};
-
-const _tdStyle = {
-  padding: '10px 14px',
-  borderBottom: '1px solid #f1f5f9',
-  color: '#374151',
-  fontSize: '13px',
-  verticalAlign: 'middle'
-};
 
 const inputStyle = {
   width: '100%',

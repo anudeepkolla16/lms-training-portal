@@ -22,13 +22,6 @@ const msalConfig = {
 
 const pca = new PublicClientApplication(msalConfig);
 
-const ROLE_COLORS = {
-  Admin: '#0ea5e9',
-  HR: '#8b5cf6',
-  Manager: '#f59e0b',
-  Employee: '#10b981'
-};
-
 const AppContent = () => {
   const isAuthenticated = useIsAuthenticated();
   const { instance, accounts } = useMsal();
