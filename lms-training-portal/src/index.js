@@ -19,12 +19,21 @@ const msalConfig = {
 
 const pca = new PublicClientApplication(msalConfig);
 
-// Initialize MSAL FIRST, then render - this fixes state_not_found errors
-pca.initialize().then(() => {
-  const root = ReactDOM.createRoot(document.getElementById('root'));
-  root.render(
-    <React.StrictMode>
+// Initialize MSAL, handle any pending redirect, THEN render React
+pca.initialize()
+  .then(() => pca.handleRedirectPromise())
+  .then((authResult) => {
+    if (authResult) {
+      console.log('Redirect auth successful:', authResult.account?.username);
+    }
+  })
+  .catch((error) => {
+    console.error('Auth error:', error);
+  })
+  .finally(() => {
+    // Always render the app, regardless of auth result
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(
       <App msalInstance={pca} />
-    </React.StrictMode>
-  );
-});
+    );
+  });
