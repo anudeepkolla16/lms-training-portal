@@ -55,10 +55,10 @@ const MOCK_ROLES = {
 export const getMyEnrollments = async (token, userEmail) => {
   try {
     const siteId = await getSiteId(token);
-    // Encode the email to handle special characters (e.g. apostrophes) safely
-    const encodedEmail = encodeURIComponent(userEmail).replace(/'/g, "''");
+    // Only escape single quotes for OData - do NOT encodeURIComponent the email value
+    const safeEmail = (userEmail || '').replace(/'/g, "''");
     const res = await axios.get(
-      `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items?$expand=fields&$filter=fields/EmployeeID eq '${encodedEmail}'&$top=1000`,
+      `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items?$expand=fields&$filter=fields/EmployeeID eq '${safeEmail}'&$top=1000`,
       h(token)
     );
     return (res.data?.value || res.d?.results || []).map(mapItem);
@@ -161,7 +161,7 @@ export const getQuizQuestions = async (token, courseTitle) => {
   try {
     const siteId = await getSiteId(token);
     const res = await axios.get(
-      `${GRAPH}/sites/${siteId}/lists/Quiz%20Questions/items?$expand=fields&$filter=fields/CourseTitle eq '${encodeURIComponent(courseTitle)}'&$top=50`,
+      `${GRAPH}/sites/${siteId}/lists/Quiz%20Questions/items?$expand=fields&$filter=fields/CourseTitle eq '${(courseTitle||'').replace(/'/g,"''")}'&$top=50`,
       h(token)
     );
     return (res.data.value || []).map(mapItem);
@@ -204,7 +204,7 @@ export const getMyQuizResults = async (token, userEmail) => {
   try {
     const siteId = await getSiteId(token);
     const res = await axios.get(
-      `${GRAPH}/sites/${siteId}/lists/Quiz%20Results/items?$expand=fields&$filter=fields/EmployeeID eq '${encodeURIComponent(userEmail)}'&$top=100`,
+      `${GRAPH}/sites/${siteId}/lists/Quiz%20Results/items?$expand=fields&$filter=fields/EmployeeID eq '${(userEmail||'').replace(/'/g,"''")}'&$top=100`,
       h(token)
     );
     return (res.data.value || []).map(mapItem);
