@@ -96,7 +96,7 @@ const AdminDashboard = ({ accessToken, user }) => {
   const [loading, setLoading] = React.useState(true);
   const [msg, setMsg] = React.useState('');
 
-  const [courseForm, setCourseForm] = React.useState({ Title: '', Description: '', Duration: '', Department: '' });
+  const [courseForm, setCourseForm] = React.useState({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '' });
   const [enrollForm, setEnrollForm] = React.useState({ EmployeeID: '', CourseTitle: '', Department: '', DueDate: '' });
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -139,7 +139,7 @@ const AdminDashboard = ({ accessToken, user }) => {
     try {
       await createCourse(accessToken, courseForm);
       setMsg('Course created successfully.');
-      setCourseForm({ Title: '', Description: '', Duration: '', Department: '' });
+      setCourseForm({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '' });
       const c = await getCourses(accessToken);
       setCourses(c);
     } catch {
@@ -316,9 +316,14 @@ const AdminDashboard = ({ accessToken, user }) => {
                 <label style={labelStyle}>Duration</label>
                 <input style={inputStyle} value={courseForm.Duration} onChange={e => setCourseForm(f => ({ ...f, Duration: e.target.value }))} placeholder="e.g. 2 hours" />
               </div>
-              <div style={{ marginBottom: '20px' }}>
+              <div style={{ marginBottom: '14px' }}>
                 <label style={labelStyle}>Department</label>
                 <input style={inputStyle} value={courseForm.Department} onChange={e => setCourseForm(f => ({ ...f, Department: e.target.value }))} placeholder="e.g. Engineering" />
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={labelStyle}>📄 PDF / Course Materials URL</label>
+                <input style={inputStyle} value={courseForm.CourseMaterials} onChange={e => setCourseForm(f => ({ ...f, CourseMaterials: e.target.value }))} placeholder="Paste SharePoint PDF link here" />
+                <small style={{ color: '#6b7280', fontSize: '12px' }}>Upload PDF to SharePoint, copy sharing link and paste here</small>
               </div>
               <button type="submit" style={btnStyle} disabled={submitting}>
                 {submitting ? 'Saving...' : 'Add Course'}
