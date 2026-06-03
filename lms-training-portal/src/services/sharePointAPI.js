@@ -120,12 +120,15 @@ export const enrollEmployee = async (token, data) => {
 export const createCourse = async (token, data) => {
   try {
     const siteId = await getSiteId(token);
-    // Only send fields that exist in SharePoint list
+    // Only send fields that exist in SharePoint Courses list
     const fields = { Title: data.Title };
     if (data.Duration) fields.Duration = data.Duration;
     if (data.Department) fields.Department = data.Department;
-    if (data.CourseMaterials) fields.CourseMaterials = String(data.CourseMaterials);
-    // Note: Skip Description - can cause conflicts with SharePoint built-in fields
+    if (data.CourseMaterials) {
+      // Hyperlink columns in Graph API need {Url, Description} format
+      fields.CourseMaterials = { Url: String(data.CourseMaterials), Description: 'Course Materials' };
+    }
+    if (data.Description) fields.CourseDescription = data.Description;
 
     const res = await axios.post(
       `${GRAPH}/sites/${siteId}/lists/Courses/items`,
