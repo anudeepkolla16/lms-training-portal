@@ -1,5 +1,6 @@
 import React from 'react';
 import { getCourses, getAllEnrollments, enrollEmployee, getQuizResults, getAssessmentsForManager, updateAssessment } from '../services/sharePointAPI';
+import { downloadCSV } from '../utils/csv';
 
 
 const inputStyle = {
@@ -83,6 +84,7 @@ const ManagerDashboard = ({ accessToken, user, userProfile }) => {
   const [quizLoaded, setQuizLoaded] = React.useState(false);
   const [reviews, setReviews] = React.useState([]);
   const [reviewEdits, setReviewEdits] = React.useState({});
+  const [dept, setDept] = React.useState('');
   const today = new Date();
 
   const loadReviews = React.useCallback(async () => {
@@ -138,13 +140,23 @@ const ManagerDashboard = ({ accessToken, user, userProfile }) => {
     ? Math.round((completedCount / enrollments.length) * 100)
     : 0;
 
+  // Department filter (applies to Team Progress grid + export)
+  const departmentOptions = [...new Set(enrollments.map(e => e.Department).filter(Boolean))].sort();
+  const filteredEnrollments = dept ? enrollments.filter(e => e.Department === dept) : enrollments;
+
   // Build per-employee profile
   const employeeMap = {};
-  enrollments.forEach(e => {
+  filteredEnrollments.forEach(e => {
     const email = e.EmployeeID || 'Unknown';
     if (!employeeMap[email]) employeeMap[email] = { enrollments: [] };
     employeeMap[email].enrollments.push(e);
   });
+
+  const exportTeam = () => downloadCSV(
+    `team-progress-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Employee', 'Course', 'Department', 'Status', 'Due Date'],
+    filteredEnrollments.map(e => [e.EmployeeID || '', e.Title || e.CourseTitle || '', e.Department || '', e.Status || 'Not Started', e.DueDate ? new Date(e.DueDate).toLocaleDateString() : ''])
+  );
 
   const handleAssign = async (ev) => {
     ev.preventDefault();
@@ -234,6 +246,19 @@ const ManagerDashboard = ({ accessToken, user, userProfile }) => {
       {/* Team Progress Tab */}
       {activeTab === 'team' && (
         <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center', marginBottom: '16px' }}>
+            <select value={dept} onChange={e => setDept(e.target.value)} style={{
+              padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '7px',
+              fontSize: '13px', color: '#374151', background: 'white', minWidth: '170px'
+            }}>
+              <option value="">All departments</option>
+              {departmentOptions.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <button onClick={exportTeam} style={{
+              background: 'white', color: ACCENT, border: `1px solid ${ACCENT}`, padding: '8px 14px',
+              borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
+            }}>⬇ Export CSV</button>
+          </div>
           {Object.entries(employeeMap).length === 0 ? (
             <div style={{ background: 'white', borderRadius: '12px', padding: '48px', textAlign: 'center', color: '#9ca3af', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
               No team data available.

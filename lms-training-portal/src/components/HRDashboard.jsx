@@ -1,5 +1,6 @@
 import React from 'react';
 import { getAllEnrollments, getQuizResults } from '../services/sharePointAPI';
+import { downloadCSV } from '../utils/csv';
 
 const thStyle = {
   padding: '10px 14px',
@@ -87,6 +88,7 @@ const HRDashboard = ({ accessToken, user }) => {
   const [loading, setLoading] = React.useState(true);
   const [quizResults, setQuizResults] = React.useState([]);
   const [quizLoaded, setQuizLoaded] = React.useState(false);
+  const [dept, setDept] = React.useState('');
   const today = new Date();
 
   React.useEffect(() => {
@@ -113,6 +115,11 @@ const HRDashboard = ({ accessToken, user }) => {
   const overdueList = enrollments.filter(e => e.DueDate && new Date(e.DueDate) < today && e.Status !== 'Completed');
   const departments = new Set(enrollments.map(e => e.Department).filter(Boolean)).size;
 
+  // Department filter (applies to All Enrollments + Overdue tabs and the export)
+  const departmentOptions = [...new Set(enrollments.map(e => e.Department).filter(Boolean))].sort();
+  const filteredEnrollments = dept ? enrollments.filter(e => e.Department === dept) : enrollments;
+  const filteredOverdue = filteredEnrollments.filter(e => e.DueDate && new Date(e.DueDate) < today && e.Status !== 'Completed');
+
   // Department compliance map
   const deptMap = {};
   enrollments.forEach(e => {
@@ -126,50 +133,23 @@ const HRDashboard = ({ accessToken, user }) => {
     else deptMap[dept].notStarted++;
   });
 
-  const exportCSV = () => {
-    const headers = ['Employee', 'Course', 'Department', 'Status', 'Due Date'];
-    const rows = enrollments.map(e => [
-      e.EmployeeID || '',
-      e.Title || e.CourseTitle || '',
-      e.Department || '',
-      e.Status || 'Not Started',
-      e.DueDate ? new Date(e.DueDate).toLocaleDateString() : ''
-    ]);
-    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `enrollments-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const exportCSV = () => downloadCSV(
+    `enrollments-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Employee', 'Course', 'Department', 'Status', 'Due Date'],
+    filteredEnrollments.map(e => [e.EmployeeID || '', e.Title || e.CourseTitle || '', e.Department || '', e.Status || 'Not Started', e.DueDate ? new Date(e.DueDate).toLocaleDateString() : ''])
+  );
 
-  const exportQuizCSV = () => {
-    const headers = ['Employee', 'Course', 'Score', 'Percentage', 'Result', 'Date'];
-    const rows = quizResults.map(r => {
+  const exportQuizCSV = () => downloadCSV(
+    `quiz-results-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Employee', 'Course', 'Score', 'Percentage', 'Result', 'Date'],
+    quizResults.map(r => {
       const score = r.Score ?? 0;
       const total = r.TotalQuestions ?? r.Total ?? 0;
       const pct = total > 0 ? Math.round((score / total) * 100) : (r.Percentage ?? 0);
       const passed = r.Passed === true || r.Passed === 'true' || r.Passed === 'Yes' || pct >= 70;
-      return [
-        r.EmployeeID || r.Employee || '',
-        r.CourseTitle || r.Title || '',
-        `${score}${total ? '/' + total : ''}`,
-        `${pct}%`,
-        passed ? 'Pass' : 'Fail',
-        r.AttemptDate ? new Date(r.AttemptDate).toLocaleDateString() : ''
-      ];
-    });
-    const csv = [headers, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `quiz-results-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+      return [r.EmployeeID || r.Employee || '', r.CourseTitle || r.Title || '', `${score}${total ? '/' + total : ''}`, `${pct}%`, passed ? 'Pass' : 'Fail', r.AttemptDate ? new Date(r.AttemptDate).toLocaleDateString() : ''];
+    })
+  );
 
   const tabs = [
     { id: 'compliance', label: 'Compliance Report' },
@@ -191,9 +171,18 @@ const HRDashboard = ({ accessToken, user }) => {
           <h2 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '22px', fontWeight: '700' }}>HR Analytics Dashboard</h2>
           <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Welcome, {user?.name || user?.username}</p>
         </div>
-        <button onClick={exportCSV} style={{ ...btnStyle, display: 'flex', alignItems: 'center', gap: '7px' }}>
-          ⬇ Export CSV
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <select value={dept} onChange={e => setDept(e.target.value)} style={{
+            padding: '9px 12px', border: '1px solid #d1d5db', borderRadius: '7px',
+            fontSize: '13px', color: '#374151', background: 'white', minWidth: '180px'
+          }}>
+            <option value="">All departments</option>
+            {departmentOptions.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <button onClick={exportCSV} style={{ ...btnStyle, display: 'flex', alignItems: 'center', gap: '7px' }}>
+            ⬇ Export CSV
+          </button>
+        </div>
       </div>
 
       {/* Stat Cards */}
@@ -274,7 +263,7 @@ const HRDashboard = ({ accessToken, user }) => {
       {activeTab === 'overdue' && (
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
           <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
-            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Overdue Enrollments ({overdueList.length})</h3>
+            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Overdue Enrollments ({filteredOverdue.length})</h3>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -286,10 +275,10 @@ const HRDashboard = ({ accessToken, user }) => {
                 </tr>
               </thead>
               <tbody>
-                {overdueList.length === 0 ? (
+                {filteredOverdue.length === 0 ? (
                   <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No overdue enrollments.</td></tr>
                 ) : (
-                  overdueList.map(e => {
+                  filteredOverdue.map(e => {
                     const daysOverdue = Math.floor((today - new Date(e.DueDate)) / (1000 * 60 * 60 * 24));
                     return (
                       <tr key={e.Id} style={{ background: '#fff9f9' }}>
@@ -315,7 +304,7 @@ const HRDashboard = ({ accessToken, user }) => {
       {activeTab === 'all' && (
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
           <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
-            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>All Enrollments ({enrollments.length})</h3>
+            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>All Enrollments ({filteredEnrollments.length})</h3>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -327,10 +316,10 @@ const HRDashboard = ({ accessToken, user }) => {
                 </tr>
               </thead>
               <tbody>
-                {enrollments.length === 0 ? (
+                {filteredEnrollments.length === 0 ? (
                   <tr><td colSpan={5} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No enrollments found.</td></tr>
                 ) : (
-                  enrollments.map(e => (
+                  filteredEnrollments.map(e => (
                     <tr key={e.Id}>
                       <td style={tdStyle}>{e.EmployeeID || '—'}</td>
                       <td style={tdStyle}>{e.Title || e.CourseTitle || '—'}</td>

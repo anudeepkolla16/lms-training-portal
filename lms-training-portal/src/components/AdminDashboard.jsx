@@ -1,5 +1,23 @@
 import React from 'react';
 import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults, getOrgRoles, createOrgRole, deleteOrgRole, getAllUserProfiles, upsertUserProfile } from '../services/sharePointAPI';
+import { downloadCSV } from '../utils/csv';
+import BulkUpload from './BulkUpload';
+
+// Reusable department filter dropdown
+const DeptFilter = ({ value, onChange, departments, accent = '#0ea5e9' }) => (
+  <select value={value} onChange={e => onChange(e.target.value)} style={{
+    padding: '7px 12px', border: '1px solid #d1d5db', borderRadius: '7px',
+    fontSize: '13px', color: '#374151', background: 'white', minWidth: '170px'
+  }}>
+    <option value="">All departments</option>
+    {departments.map(d => <option key={d} value={d}>{d}</option>)}
+  </select>
+);
+
+const exportBtn = (accent) => ({
+  background: 'white', color: accent, border: `1px solid ${accent}`, padding: '7px 14px',
+  borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
+});
 
 const thStyle = {
   padding: '10px 14px',
@@ -114,6 +132,11 @@ const AdminDashboard = ({ accessToken, user }) => {
   const [addingEmployee, setAddingEmployee] = React.useState(false);
   const [orgLoaded, setOrgLoaded] = React.useState(false);
 
+  // Department filters
+  const [enrollDept, setEnrollDept] = React.useState('');
+  const [profileDept, setProfileDept] = React.useState('');
+  const [courseDept, setCourseDept] = React.useState('');
+
   // Quiz state
   const [quizForm, setQuizForm] = React.useState({ CourseTitle: '', Question: '', OptionA: '', OptionB: '', OptionC: '', OptionD: '', CorrectAnswer: 'A' });
   const [quizResults, setQuizResults] = React.useState([]);
@@ -144,6 +167,41 @@ const AdminDashboard = ({ accessToken, user }) => {
     deptMap[dept].total++;
     if (e.Status === 'Completed') deptMap[dept].completed++;
   });
+
+  // Department option lists + filtered views
+  const enrollDepartments = [...new Set(enrollments.map(e => e.Department).filter(Boolean))].sort();
+  const profileDepartments = [...new Set(profiles.map(p => p.Department).filter(Boolean))].sort();
+  const courseDepartments = [...new Set(courses.map(c => c.Department).filter(Boolean))].sort();
+  const filteredEnrollments = enrollDept ? enrollments.filter(e => e.Department === enrollDept) : enrollments;
+  const filteredProfiles = profileDept ? profiles.filter(p => p.Department === profileDept) : profiles;
+  const filteredCourses = courseDept ? courses.filter(c => c.Department === courseDept) : courses;
+
+  // CSV exports (respect the active department filter)
+  const exportEnrollments = () => downloadCSV(
+    `enrollments-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Employee', 'Course', 'Department', 'Status', 'Due Date'],
+    filteredEnrollments.map(e => [e.EmployeeID || '', e.Title || e.CourseTitle || '', e.Department || '', e.Status || 'Not Started', e.DueDate ? new Date(e.DueDate).toLocaleDateString() : ''])
+  );
+  const exportProfiles = () => downloadCSV(
+    `employees-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['email', 'Role', 'JobRole', 'Department', 'ManagerEmail'],
+    filteredProfiles.map(p => [p.Title || '', p.Role || '', p.JobRole || '', p.Department || '', p.ManagerEmail || ''])
+  );
+  const exportCourses = () => downloadCSV(
+    `courses-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Title', 'Description', 'Duration', 'Department', 'CourseMaterials', 'JobRoles', 'Departments', 'Mandatory'],
+    filteredCourses.map(c => [c.Title || '', c.Description || '', c.Duration || '', c.Department || '', c.CourseMaterials || '', c.JobRoles || '', c.Departments || '', (c.Mandatory === true || c.Mandatory === 'true') ? 'Yes' : 'No'])
+  );
+  const exportQuiz = () => downloadCSV(
+    `quiz-results-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Employee', 'Course', 'Score', 'Total', 'Percentage', 'Result', 'Date'],
+    quizResults.map(r => {
+      const score = r.Score ?? 0; const total = r.TotalQuestions ?? r.Total ?? 0;
+      const pct = total > 0 ? Math.round((score / total) * 100) : (r.Percentage ?? 0);
+      const passed = r.Passed === true || r.Passed === 'true' || r.Passed === 'Yes' || pct >= 70;
+      return [r.EmployeeID || r.Employee || '', r.CourseTitle || r.Title || '', score, total, `${pct}%`, passed ? 'Pass' : 'Fail', r.AttemptDate ? new Date(r.AttemptDate).toLocaleDateString() : ''];
+    })
+  );
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
@@ -424,10 +482,27 @@ const AdminDashboard = ({ accessToken, user }) => {
 
       {/* Courses Tab */}
       {activeTab === 'courses' && (
+        <div>
+        <div style={{ marginBottom: '18px' }}>
+          <BulkUpload
+            title="Bulk add courses (CSV)"
+            accent={ACCENT}
+            templateName="courses-template.csv"
+            templateHeaders={['Title', 'Description', 'Duration', 'Department', 'CourseMaterials', 'JobRoles', 'Departments', 'Mandatory']}
+            sampleRows={[['Data Engineering 101', 'Intro to DE', '4 Hours', 'Engineering', '', 'Data Engineer;BI Analyst', 'Engineering', 'Yes']]}
+            mapRow={(r) => r.Title ? ({ ...r, Mandatory: /^(yes|true|1)$/i.test(r.Mandatory || '') }) : null}
+            onSubmitRow={(payload) => createCourse(accessToken, payload)}
+            onDone={async () => setCourses(await getCourses(accessToken))}
+          />
+        </div>
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div style={{ flex: '2', minWidth: '300px', background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
-              <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>All Courses</h3>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>All Courses ({filteredCourses.length})</h3>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <DeptFilter value={courseDept} onChange={setCourseDept} departments={courseDepartments} />
+                <button onClick={exportCourses} style={exportBtn(ACCENT)}>⬇ Export CSV</button>
+              </div>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -438,10 +513,10 @@ const AdminDashboard = ({ accessToken, user }) => {
                 </tr>
               </thead>
               <tbody>
-                {courses.length === 0 ? (
+                {filteredCourses.length === 0 ? (
                   <tr><td colSpan={5} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No courses found.</td></tr>
                 ) : (
-                  courses.map(c => (
+                  filteredCourses.map(c => (
                     <tr key={c.Id}>
                       <td style={tdStyle}><strong>{c.Title}</strong></td>
                       <td style={tdStyle}>{c.Duration || '—'}</td>
@@ -565,13 +640,18 @@ const AdminDashboard = ({ accessToken, user }) => {
             </form>
           </div>
         </div>
+        </div>
       )}
 
       {/* Enrollments Tab */}
       {activeTab === 'enrollments' && (
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-          <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
-            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>All Enrollments ({enrollments.length})</h3>
+          <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>All Enrollments ({filteredEnrollments.length})</h3>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <DeptFilter value={enrollDept} onChange={setEnrollDept} departments={enrollDepartments} />
+              <button onClick={exportEnrollments} style={exportBtn(ACCENT)}>⬇ Export CSV</button>
+            </div>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -583,10 +663,10 @@ const AdminDashboard = ({ accessToken, user }) => {
                 </tr>
               </thead>
               <tbody>
-                {enrollments.length === 0 ? (
+                {filteredEnrollments.length === 0 ? (
                   <tr><td colSpan={5} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No enrollments found.</td></tr>
                 ) : (
-                  enrollments.map(e => (
+                  filteredEnrollments.map(e => (
                     <tr key={e.Id}>
                       <td style={tdStyle}>{e.EmployeeID || '—'}</td>
                       <td style={tdStyle}>{e.Title || e.CourseTitle || '—'}</td>
@@ -637,11 +717,27 @@ const AdminDashboard = ({ accessToken, user }) => {
 
       {/* Org Roles (JD) Tab */}
       {activeTab === 'orgroles' && (
+        <div>
+        <div style={{ marginBottom: '18px' }}>
+          <BulkUpload
+            title="Bulk add job-roles (CSV)"
+            accent={ACCENT}
+            templateName="org-roles-template.csv"
+            templateHeaders={['JobRole', 'Department']}
+            sampleRows={[['Data Engineer', 'Engineering'], ['BI Analyst', 'Analytics']]}
+            mapRow={(r) => (r.JobRole || r.Title) ? ({ Title: r.JobRole || r.Title, Department: r.Department || '' }) : null}
+            onSubmitRow={(payload) => createOrgRole(accessToken, payload)}
+            onDone={async () => setOrgRoles(await getOrgRoles(accessToken))}
+          />
+        </div>
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div style={{ flex: '2', minWidth: '300px', background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
-              <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Job-Roles (JD Taxonomy) — {orgRoles.length}</h3>
-              <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px' }}>These job-roles drive training recommendations and auto-assignment. Separate from access-roles.</p>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Job-Roles (JD Taxonomy) — {orgRoles.length}</h3>
+                <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px' }}>These job-roles drive training recommendations and auto-assignment. Separate from access-roles.</p>
+              </div>
+              <button onClick={() => downloadCSV(`org-roles-${new Date().toISOString().slice(0,10)}.csv`, ['JobRole', 'Department'], orgRoles.map(r => [r.Title || '', r.Department || '']))} style={exportBtn(ACCENT)}>⬇ Export CSV</button>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>{['Job-Role', 'Department', ''].map(hh => <th key={hh} style={thStyle}>{hh}</th>)}</tr></thead>
@@ -674,6 +770,7 @@ const AdminDashboard = ({ accessToken, user }) => {
               <button type="submit" style={btnStyle}>Add Job-Role</button>
             </form>
           </div>
+        </div>
         </div>
       )}
 
@@ -710,18 +807,38 @@ const AdminDashboard = ({ accessToken, user }) => {
           </form>
         </div>
 
+        {/* Bulk upload employees */}
+        <div style={{ marginBottom: '18px' }}>
+          <BulkUpload
+            title="Bulk add employees (CSV)"
+            accent={ACCENT}
+            templateName="employees-template.csv"
+            templateHeaders={['email', 'Role', 'JobRole', 'Department', 'ManagerEmail']}
+            sampleRows={[['employee@sarasanalytics.com', 'Employee', 'Data Engineer', 'Engineering', 'manager@sarasanalytics.com']]}
+            mapRow={(r) => (r.email || r.Email) ? ({ email: r.email || r.Email, Role: r.Role || 'Employee', JobRole: r.JobRole || '', Department: r.Department || '', ManagerEmail: r.ManagerEmail || '' }) : null}
+            onSubmitRow={(payload) => upsertUserProfile(accessToken, payload)}
+            onDone={async () => setProfiles(await getAllUserProfiles(accessToken))}
+          />
+        </div>
+
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-          <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
-            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Employee Profiles ({profiles.length})</h3>
-            <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px' }}>Set each employee's job-role, department and manager. Drives auto-assignment and assessment review routing.</p>
+          <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div>
+              <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Employee Profiles ({filteredProfiles.length})</h3>
+              <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px' }}>Set each employee's job-role, department and manager. Drives auto-assignment and assessment review routing.</p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <DeptFilter value={profileDept} onChange={setProfileDept} departments={profileDepartments} />
+              <button onClick={exportProfiles} style={exportBtn(ACCENT)}>⬇ Export CSV</button>
+            </div>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>{['Employee', 'Access Role', 'Job-Role (JD)', 'Department', 'Manager Email', ''].map(hh => <th key={hh} style={thStyle}>{hh}</th>)}</tr></thead>
               <tbody>
-                {profiles.length === 0 ? (
+                {filteredProfiles.length === 0 ? (
                   <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No profiles found.</td></tr>
-                ) : profiles.map(p => {
+                ) : filteredProfiles.map(p => {
                   const email = p.Title;
                   const edit = profileEdits[email] || {};
                   const val = (k, fallback) => edit[k] !== undefined ? edit[k] : fallback;
@@ -820,8 +937,9 @@ const AdminDashboard = ({ accessToken, user }) => {
             </div>
 
             <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
-                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '15px', fontWeight: '700' }}>Quiz Results</h3>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '15px', fontWeight: '700' }}>Quiz Results ({quizResults.length})</h3>
+                <button onClick={exportQuiz} style={exportBtn(ACCENT)}>⬇ Export CSV</button>
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
