@@ -235,13 +235,24 @@ const Dashboard = ({ accessToken, user }) => {
             </div>
           </div>
 
-          {/* PDF Iframe */}
-          <iframe
-            src={getEmbedUrl(selectedCourse.CourseMaterials)}
-            title={selectedCourse.Title}
-            style={{ flex: 1, border: 'none', background: '#525659' }}
-            allow="fullscreen"
-          />
+          {/* PDF Viewer */}
+          <div style={{ flex: 1, background: '#525659', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px', padding: '40px' }}>
+            <div style={{ fontSize: '80px' }}>📄</div>
+            <div style={{ textAlign: 'center' }}>
+              <h3 style={{ color: 'white', margin: '0 0 8px', fontSize: '20px' }}>{selectedCourse.Title}</h3>
+              <p style={{ color: '#94a3b8', margin: '0 0 24px', fontSize: '14px' }}>
+                SharePoint PDFs must be opened in a new tab.<br/>Read the material, then come back and take the quiz.
+              </p>
+              <a href={selectedCourse.CourseMaterials} target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-block', background: '#3b82f6', color: 'white', padding: '14px 28px', borderRadius: '10px', textDecoration: 'none', fontSize: '16px', fontWeight: '700', marginBottom: '16px' }}>
+                📖 Open PDF in New Tab
+              </a>
+              <br />
+              <p style={{ color: '#64748b', fontSize: '13px', margin: '12px 0 0' }}>
+                After reading, click <strong style={{ color: '#10b981' }}>"🎯 Take Quiz & Complete"</strong> above ↑
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
