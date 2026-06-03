@@ -353,8 +353,8 @@ const AdminDashboard = ({ accessToken, user }) => {
                 ) : (
                   enrollments.map(e => (
                     <tr key={e.Id}>
-                      <td style={tdStyle}>{e.EmployeeID || e.Title || '—'}</td>
-                      <td style={tdStyle}>{e.CourseTitle || '—'}</td>
+                      <td style={tdStyle}>{e.EmployeeID || '—'}</td>
+                      <td style={tdStyle}>{e.Title || e.CourseTitle || '—'}</td>
                       <td style={tdStyle}>{e.Department || '—'}</td>
                       <td style={tdStyle}><StatusBadge status={e.Status} /></td>
                       <td style={tdStyle}>{e.DueDate ? new Date(e.DueDate).toLocaleDateString() : '—'}</td>
