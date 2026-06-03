@@ -53,6 +53,35 @@ const MOCK_ROLES = {
   'srinivas.janipalli@sarasanalytics.com': 'Manager',
 };
 
+// Job-role (JD) taxonomy fallback — admins manage the real list in SharePoint "OrgRoles"
+const MOCK_ORG_ROLES = [
+  { Id: 1, Title: 'Data Engineer', Department: 'Engineering' },
+  { Id: 2, Title: 'Analytics Engineer', Department: 'Analytics' },
+  { Id: 3, Title: 'BI Analyst', Department: 'Analytics' },
+  { Id: 4, Title: 'Data Scientist', Department: 'Data Science' },
+  { Id: 5, Title: 'HR Generalist', Department: 'HR' },
+  { Id: 6, Title: 'Engineering Manager', Department: 'Engineering' },
+];
+
+// Employee profile fallback. NOTE: `role` = access-role (controls dashboard),
+// `jobRole` = job description (controls which training is relevant). They are different.
+const MOCK_PROFILES = {
+  'anudeep.kolla@sarasanalytics.com': { role: 'Admin', jobRole: 'Data Engineer', department: 'Engineering', managerEmail: 'srinivas.janipalli@sarasanalytics.com' },
+  'subha.kumar@sarasanalytics.com': { role: 'HR', jobRole: 'HR Generalist', department: 'HR', managerEmail: '' },
+  'srinivas.janipalli@sarasanalytics.com': { role: 'Manager', jobRole: 'Engineering Manager', department: 'Engineering', managerEmail: '' },
+};
+
+// Split a semicolon-delimited field into a clean lowercased array
+const splitCsv = (s) => String(s || '').split(';').map(x => x.trim().toLowerCase()).filter(Boolean);
+// A course targets a value if the field is empty (applies to all) or contains the value
+export const matchesCsv = (field, value) => {
+  const list = splitCsv(field);
+  if (list.length === 0) return true;
+  return value ? list.includes(String(value).trim().toLowerCase()) : false;
+};
+// SharePoint Yes/No can come back as true/'true'/1 — normalize to a boolean
+export const isTruthy = (v) => v === true || v === 'true' || v === 1 || v === '1' || v === 'Yes' || v === 'yes';
+
 export const getMyEnrollments = async (token, userEmail) => {
   try {
     const siteId = await getSiteId(token);
@@ -129,6 +158,9 @@ export const createCourse = async (token, data) => {
     if (data.Department) fields.Department = data.Department;
     if (data.CourseMaterials) fields.CourseMaterials = String(data.CourseMaterials);
     if (data.Description) fields.Description = data.Description;
+    if (data.JobRoles !== undefined) fields.JobRoles = String(data.JobRoles || '');
+    if (data.Departments !== undefined) fields.Departments = String(data.Departments || '');
+    if (data.Mandatory !== undefined) fields.Mandatory = !!data.Mandatory;
 
     const res = await axios.post(
       `${GRAPH}/sites/${siteId}/lists/Courses/items`,
@@ -156,6 +188,194 @@ export const getUserRole = async (token, userEmail) => {
     console.warn('getUserRole fallback:', e?.response?.data?.error?.message || e.message);
     return MOCK_ROLES[userEmail.toLowerCase()] || 'Employee';
   }
+};
+
+// Superset of getUserRole — reads the same UserRoles list but returns the full profile.
+// `role` = access-role (dashboard), `jobRole`/`department` = JD dimension (training), `managerEmail` = review routing.
+export const getUserProfile = async (token, userEmail) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/UserRoles/items?$expand=fields&$top=500`,
+      h(token)
+    );
+    const items = res.data.value || [];
+    const match = items.find(i => (i.fields?.Title || '').toLowerCase() === userEmail.toLowerCase());
+    const f = match?.fields || {};
+    return {
+      role: f.Role || 'Employee',
+      jobRole: f.JobRole || '',
+      department: f.Department || '',
+      managerEmail: f.ManagerEmail || '',
+    };
+  } catch (e) {
+    console.warn('getUserProfile fallback:', e?.response?.data?.error?.message || e.message);
+    return MOCK_PROFILES[userEmail.toLowerCase()] || { role: 'Employee', jobRole: '', department: '', managerEmail: '' };
+  }
+};
+
+// All employee profiles — for the Admin "Employee Profiles" management table
+export const getAllUserProfiles = async (token) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/UserRoles/items?$expand=fields&$top=1000`,
+      h(token)
+    );
+    return (res.data.value || []).map(mapItem);
+  } catch (e) {
+    console.warn('getAllUserProfiles fallback:', e?.response?.data?.error?.message || e.message);
+    return Object.entries(MOCK_PROFILES).map(([email, p], i) => ({
+      Id: i + 1, Title: email, Role: p.role, JobRole: p.jobRole, Department: p.department, ManagerEmail: p.managerEmail
+    }));
+  }
+};
+
+// Create or update a UserRoles row (email is the Title key). Sets JobRole/Department/ManagerEmail (and Role if provided).
+export const upsertUserProfile = async (token, { email, Role, JobRole, Department, ManagerEmail }) => {
+  const siteId = await getSiteId(token);
+  const fields = {};
+  if (Role !== undefined) fields.Role = Role;
+  if (JobRole !== undefined) fields.JobRole = JobRole;
+  if (Department !== undefined) fields.Department = Department;
+  if (ManagerEmail !== undefined) fields.ManagerEmail = ManagerEmail;
+  try {
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/UserRoles/items?$expand=fields&$top=1000`,
+      h(token)
+    );
+    const match = (res.data.value || []).find(i => (i.fields?.Title || '').toLowerCase() === (email || '').toLowerCase());
+    if (match) {
+      await axios.patch(`${GRAPH}/sites/${siteId}/lists/UserRoles/items/${match.id}`, { fields }, h(token));
+    } else {
+      await axios.post(`${GRAPH}/sites/${siteId}/lists/UserRoles/items`, { fields: { Title: email, ...fields } }, h(token));
+    }
+  } catch (e) { console.error('upsertUserProfile error:', e?.response?.data || e.message); throw e; }
+};
+
+// ---- Org roles (JD taxonomy) ----
+export const getOrgRoles = async (token) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/OrgRoles/items?$expand=fields&$top=1000`,
+      h(token)
+    );
+    return (res.data.value || []).map(mapItem);
+  } catch (e) {
+    console.warn('getOrgRoles fallback:', e?.response?.data?.error?.message || e.message);
+    return MOCK_ORG_ROLES;
+  }
+};
+
+export const createOrgRole = async (token, data) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.post(
+      `${GRAPH}/sites/${siteId}/lists/OrgRoles/items`,
+      { fields: { Title: data.Title, Department: data.Department || '' } },
+      h(token)
+    );
+    return res.data;
+  } catch (e) { console.error('createOrgRole error:', e?.response?.data || e.message); throw e; }
+};
+
+export const deleteOrgRole = async (token, id) => {
+  try {
+    const siteId = await getSiteId(token);
+    await axios.delete(`${GRAPH}/sites/${siteId}/lists/OrgRoles/items/${id}`, h(token));
+  } catch (e) { console.error('deleteOrgRole error:', e?.response?.data || e.message); throw e; }
+};
+
+// ---- Self assessments (rating + manager review workflow) ----
+export const getMyAssessments = async (token, userEmail) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/Self%20Assessments/items?$expand=fields&$filter=fields/EmployeeID eq '${(userEmail||'').replace(/'/g,"''")}'&$top=500`,
+      h(token)
+    );
+    return (res.data.value || []).map(mapItem);
+  } catch (e) {
+    console.warn('getMyAssessments fallback:', e?.response?.data?.error?.message || e.message);
+    return [];
+  }
+};
+
+export const getAllSelfAssessments = async (token) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/Self%20Assessments/items?$expand=fields&$top=5000`,
+      h(token)
+    );
+    return (res.data.value || []).map(mapItem);
+  } catch (e) {
+    console.warn('getAllSelfAssessments fallback:', e?.response?.data?.error?.message || e.message);
+    return [];
+  }
+};
+
+// Pending reviews routed to a given manager. Falls back to client-side filtering
+// of a broad fetch if the combined OData filter is rejected (non-indexed columns).
+export const getAssessmentsForManager = async (token, managerEmail) => {
+  const me = (managerEmail || '').toLowerCase();
+  try {
+    const all = await getAllSelfAssessments(token);
+    return all.filter(a => (a.ManagerEmail || '').toLowerCase() === me && a.AssessmentState === 'PendingManagerReview');
+  } catch (e) {
+    console.warn('getAssessmentsForManager fallback:', e?.response?.data?.error?.message || e.message);
+    return [];
+  }
+};
+
+export const saveSelfAssessment = async (token, data) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.post(
+      `${GRAPH}/sites/${siteId}/lists/Self%20Assessments/items`,
+      { fields: { ...data, AssessmentDate: new Date().toISOString() } },
+      h(token)
+    );
+    return res.data;
+  } catch (e) { console.error('saveSelfAssessment error:', e?.response?.data || e.message); throw e; }
+};
+
+export const updateAssessment = async (token, assessmentId, fields) => {
+  try {
+    const siteId = await getSiteId(token);
+    await axios.patch(
+      `${GRAPH}/sites/${siteId}/lists/Self%20Assessments/items/${assessmentId}`,
+      { fields },
+      h(token)
+    );
+  } catch (e) { console.error('updateAssessment error:', e?.response?.data || e.message); throw e; }
+};
+
+// Idempotently enroll an employee in mandatory courses that match their job-role/department.
+// Returns the number of new enrollments created. Safe to call on every dashboard load.
+export const autoAssignMandatory = async (token, email, profile, courses, existingEnrollments) => {
+  if (!profile || (!profile.jobRole && !profile.department)) return 0; // no data to match on — skip
+  const enrolledTitles = new Set((existingEnrollments || []).map(e => (e.Title || '').toLowerCase()));
+  const toEnroll = (courses || []).filter(c =>
+    isTruthy(c.Mandatory) &&
+    matchesCsv(c.JobRoles, profile.jobRole) &&
+    matchesCsv(c.Departments, profile.department) &&
+    !enrolledTitles.has((c.Title || '').toLowerCase())
+  );
+  let created = 0;
+  for (const c of toEnroll) {
+    try {
+      await enrollEmployee(token, {
+        Title: c.Title,
+        EmployeeID: email,
+        Department: profile.department || c.Department || '',
+        Status: 'Not Started',
+      });
+      created++;
+    } catch (e) { /* logged in enrollEmployee */ }
+  }
+  return created;
 };
 
 export const getQuizQuestions = async (token, courseTitle) => {
@@ -235,6 +455,9 @@ export const updateCourse = async (token, courseId, data) => {
     if (data.Department !== undefined) fields.Department = data.Department;
     if (data.CourseMaterials !== undefined) fields.CourseMaterials = String(data.CourseMaterials || '');
     if (data.Description !== undefined) fields.Description = data.Description;
+    if (data.JobRoles !== undefined) fields.JobRoles = String(data.JobRoles || '');
+    if (data.Departments !== undefined) fields.Departments = String(data.Departments || '');
+    if (data.Mandatory !== undefined) fields.Mandatory = !!data.Mandatory;
     await axios.patch(
       `${GRAPH}/sites/${siteId}/lists/Courses/items/${courseId}`,
       { fields },

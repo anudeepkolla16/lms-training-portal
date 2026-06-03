@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, getQuizResults } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, getQuizResults, getAssessmentsForManager, updateAssessment } from '../services/sharePointAPI';
 
 
 const inputStyle = {
@@ -71,7 +71,7 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const ManagerDashboard = ({ accessToken, user }) => {
+const ManagerDashboard = ({ accessToken, user, userProfile }) => {
   const [courses, setCourses] = React.useState([]);
   const [enrollments, setEnrollments] = React.useState([]);
   const [activeTab, setActiveTab] = React.useState('team');
@@ -81,7 +81,34 @@ const ManagerDashboard = ({ accessToken, user }) => {
   const [assignForm, setAssignForm] = React.useState({ EmployeeEmail: '', CourseTitle: '', Department: '', DueDate: '' });
   const [quizResults, setQuizResults] = React.useState([]);
   const [quizLoaded, setQuizLoaded] = React.useState(false);
+  const [reviews, setReviews] = React.useState([]);
+  const [reviewEdits, setReviewEdits] = React.useState({});
   const today = new Date();
+
+  const loadReviews = React.useCallback(async () => {
+    const r = await getAssessmentsForManager(accessToken, user?.username || '');
+    setReviews(r);
+  }, [accessToken, user]);
+
+  React.useEffect(() => { loadReviews(); }, [loadReviews]);
+
+  const handleReview = async (review, action) => {
+    const edit = reviewEdits[review.Id] || {};
+    const finalRating = action === 'adjust' ? Number(edit.rating || review.SelfRating) : review.SelfRating;
+    setMsg('');
+    try {
+      await updateAssessment(accessToken, review.Id, {
+        AssessmentState: 'Approved',
+        ManagerRating: finalRating,
+        ManagerComment: edit.comment || '',
+        ReviewDate: new Date().toISOString(),
+      });
+      setMsg(`Review saved for ${(review.EmployeeID || '').split('@')[0]} — ${review.Title}.`);
+      await loadReviews();
+    } catch {
+      setMsg('Error saving review. Please try again.');
+    }
+  };
 
   React.useEffect(() => {
     const load = async () => {
@@ -143,7 +170,8 @@ const ManagerDashboard = ({ accessToken, user }) => {
 
   const tabs = [
     { id: 'team', label: 'Team Progress' },
-    { id: 'assign', label: 'Assign Course' }
+    { id: 'assign', label: 'Assign Course' },
+    { id: 'reviews', label: `Assessment Reviews${reviews.length ? ` (${reviews.length})` : ''}` }
   ];
 
   if (loading) return (
@@ -341,6 +369,49 @@ const ManagerDashboard = ({ accessToken, user }) => {
               {submitting ? 'Assigning...' : 'Assign Course'}
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Assessment Reviews Tab */}
+      {activeTab === 'reviews' && (
+        <div>
+          <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 16px' }}>
+            Employees who self-rated 4 or 5 after completing a course. Approve their rating, or adjust it if needed.
+          </p>
+          {reviews.length === 0 ? (
+            <div style={{ background: 'white', borderRadius: '12px', padding: '48px', textAlign: 'center', color: '#9ca3af', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+              No pending assessment reviews.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+              {reviews.map(r => {
+                const edit = reviewEdits[r.Id] || {};
+                return (
+                  <div key={r.Id} style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', borderLeft: `4px solid ${ACCENT}` }}>
+                    <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>{(r.EmployeeID || '').split('@')[0]}</div>
+                    <div style={{ color: '#6b7280', fontSize: '12px', marginBottom: '10px' }}>{r.EmployeeID}</div>
+                    <div style={{ fontSize: '13px', color: '#374151', marginBottom: '10px' }}>📘 <strong>{r.Title}</strong></div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                      <span style={{ fontSize: '13px', color: '#64748b' }}>Self-rating:</span>
+                      <span style={{ fontSize: '16px', color: '#f59e0b', fontWeight: '700' }}>{'★'.repeat(r.SelfRating || 0)}{'☆'.repeat(5 - (r.SelfRating || 0))}</span>
+                    </div>
+                    {r.EmployeeComment && <div style={{ fontSize: '12px', color: '#6b7280', fontStyle: 'italic', marginBottom: '12px' }}>“{r.EmployeeComment}”</div>}
+
+                    <label style={labelStyle}>Adjust rating (optional)</label>
+                    <select style={{ ...inputStyle, marginBottom: '10px' }} value={edit.rating ?? r.SelfRating} onChange={e => setReviewEdits(p => ({ ...p, [r.Id]: { ...edit, rating: e.target.value } }))}>
+                      {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                    <input style={{ ...inputStyle, marginBottom: '12px' }} placeholder="Comment (optional)" value={edit.comment || ''} onChange={e => setReviewEdits(p => ({ ...p, [r.Id]: { ...edit, comment: e.target.value } }))} />
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => handleReview(r, 'approve')} style={{ ...btnStyle, background: '#10b981', flex: 1, padding: '9px' }}>✅ Approve</button>
+                      <button onClick={() => handleReview(r, 'adjust')} style={{ ...btnStyle, flex: 1, padding: '9px' }}>✎ Save Adjusted</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

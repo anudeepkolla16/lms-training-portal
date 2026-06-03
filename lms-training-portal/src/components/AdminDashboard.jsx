@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults, getOrgRoles, createOrgRole, deleteOrgRole, getAllUserProfiles, upsertUserProfile } from '../services/sharePointAPI';
 
 const thStyle = {
   padding: '10px 14px',
@@ -96,14 +96,21 @@ const AdminDashboard = ({ accessToken, user }) => {
   const [loading, setLoading] = React.useState(true);
   const [msg, setMsg] = React.useState('');
 
-  const [courseForm, setCourseForm] = React.useState({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '' });
+  const [courseForm, setCourseForm] = React.useState({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '', JobRoles: '', Departments: '', Mandatory: false });
   const [enrollForm, setEnrollForm] = React.useState({ EmployeeID: '', CourseTitle: '', Department: '', DueDate: '' });
   const [submitting, setSubmitting] = React.useState(false);
 
   // Edit course state
   const [editingCourse, setEditingCourse] = React.useState(null);
-  const [editForm, setEditForm] = React.useState({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '' });
+  const [editForm, setEditForm] = React.useState({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '', JobRoles: '', Departments: '', Mandatory: false });
   const [editSubmitting, setEditSubmitting] = React.useState(false);
+
+  // Org roles (JD taxonomy) + employee profiles
+  const [orgRoles, setOrgRoles] = React.useState([]);
+  const [orgRoleForm, setOrgRoleForm] = React.useState({ Title: '', Department: '' });
+  const [profiles, setProfiles] = React.useState([]);
+  const [profileEdits, setProfileEdits] = React.useState({});
+  const [orgLoaded, setOrgLoaded] = React.useState(false);
 
   // Quiz state
   const [quizForm, setQuizForm] = React.useState({ CourseTitle: '', Question: '', OptionA: '', OptionB: '', OptionC: '', OptionD: '', CorrectAnswer: 'A' });
@@ -141,8 +148,47 @@ const AdminDashboard = ({ accessToken, user }) => {
     { id: 'courses', label: 'Courses' },
     { id: 'enrollments', label: 'All Enrollments' },
     { id: 'enroll', label: 'Enroll Employee' },
+    { id: 'orgroles', label: 'Org Roles (JD)' },
+    { id: 'profiles', label: 'Employee Profiles' },
     { id: 'quiz', label: 'Quiz' }
   ];
+
+  const loadOrgData = async () => {
+    if (orgLoaded) return;
+    const [r, p] = await Promise.all([getOrgRoles(accessToken), getAllUserProfiles(accessToken)]);
+    setOrgRoles(r);
+    setProfiles(p);
+    setOrgLoaded(true);
+  };
+
+  const handleAddOrgRole = async (ev) => {
+    ev.preventDefault();
+    setMsg('');
+    try {
+      await createOrgRole(accessToken, orgRoleForm);
+      setMsg('Job-role added.');
+      setOrgRoleForm({ Title: '', Department: '' });
+      setOrgRoles(await getOrgRoles(accessToken));
+    } catch { setMsg('Error adding job-role. Please try again.'); }
+  };
+
+  const handleDeleteOrgRole = async (id) => {
+    setMsg('');
+    try {
+      await deleteOrgRole(accessToken, id);
+      setOrgRoles(await getOrgRoles(accessToken));
+    } catch { setMsg('Error deleting job-role. Please try again.'); }
+  };
+
+  const handleSaveProfile = async (email) => {
+    const edit = profileEdits[email] || {};
+    setMsg('');
+    try {
+      await upsertUserProfile(accessToken, { email, ...edit });
+      setMsg(`Profile saved for ${email.split('@')[0]}.`);
+      setProfiles(await getAllUserProfiles(accessToken));
+    } catch { setMsg('Error saving profile. Please try again.'); }
+  };
 
   const handleQuizTabActivate = async () => {
     setActiveTab('quiz');
@@ -184,7 +230,7 @@ const AdminDashboard = ({ accessToken, user }) => {
     try {
       await createCourse(accessToken, courseForm);
       setMsg('Course created successfully.');
-      setCourseForm({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '' });
+      setCourseForm({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '', JobRoles: '', Departments: '', Mandatory: false });
       const c = await getCourses(accessToken);
       setCourses(c);
     } catch {
@@ -222,7 +268,10 @@ const AdminDashboard = ({ accessToken, user }) => {
       Description: course.Description || '',
       Duration: course.Duration || '',
       Department: course.Department || '',
-      CourseMaterials: course.CourseMaterials || ''
+      CourseMaterials: course.CourseMaterials || '',
+      JobRoles: course.JobRoles || '',
+      Departments: course.Departments || '',
+      Mandatory: course.Mandatory === true || course.Mandatory === 'true'
     });
     setMsg('');
   };
@@ -271,7 +320,12 @@ const AdminDashboard = ({ accessToken, user }) => {
         {tabs.map(t => (
           <button
             key={t.id}
-            onClick={() => t.id === 'quiz' ? handleQuizTabActivate() : (() => { setActiveTab(t.id); setMsg(''); })()}
+            onClick={() => {
+              if (t.id === 'quiz') return handleQuizTabActivate();
+              setActiveTab(t.id);
+              setMsg('');
+              if (t.id === 'orgroles' || t.id === 'profiles') loadOrgData();
+            }}
             style={{
               padding: '8px 20px',
               borderRadius: '7px',
@@ -351,7 +405,7 @@ const AdminDashboard = ({ accessToken, user }) => {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Title', 'Description', 'Duration', 'Department', 'Actions'].map(h => (
+                  {['Title', 'Duration', 'Department', 'Targeting (JD)', 'Actions'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
@@ -363,9 +417,12 @@ const AdminDashboard = ({ accessToken, user }) => {
                   courses.map(c => (
                     <tr key={c.Id}>
                       <td style={tdStyle}><strong>{c.Title}</strong></td>
-                      <td style={{ ...tdStyle, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.Description || '—'}</td>
                       <td style={tdStyle}>{c.Duration || '—'}</td>
                       <td style={tdStyle}>{c.Department || '—'}</td>
+                      <td style={{ ...tdStyle, maxWidth: '220px' }}>
+                        {(c.Mandatory === true || c.Mandatory === 'true') && <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600', marginRight: '6px' }}>🔒 Mandatory</span>}
+                        <span style={{ color: '#64748b' }}>{c.JobRoles || (c.Departments ? `Depts: ${c.Departments}` : 'All')}</span>
+                      </td>
                       <td style={tdStyle}>
                         <button
                           onClick={() => handleEditCourse(c)}
@@ -411,6 +468,19 @@ const AdminDashboard = ({ accessToken, user }) => {
                   <input style={inputStyle} value={editForm.CourseMaterials} onChange={e => setEditForm(f => ({ ...f, CourseMaterials: e.target.value }))} placeholder="Paste SharePoint PDF link here" />
                   <small style={{ color: '#6b7280', fontSize: '12px' }}>Upload PDF to SharePoint, copy sharing link and paste here</small>
                 </div>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={labelStyle}>🎯 Target Job-Roles (JD)</label>
+                  <input style={inputStyle} value={editForm.JobRoles} onChange={e => setEditForm(f => ({ ...f, JobRoles: e.target.value }))} placeholder="e.g. Data Engineer;BI Analyst" />
+                  <small style={{ color: '#6b7280', fontSize: '12px' }}>Semicolon-separated. Leave blank = all roles.</small>
+                </div>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={labelStyle}>🏢 Target Departments</label>
+                  <input style={inputStyle} value={editForm.Departments} onChange={e => setEditForm(f => ({ ...f, Departments: e.target.value }))} placeholder="e.g. Engineering;Analytics" />
+                </div>
+                <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input id="editMandatory" type="checkbox" checked={!!editForm.Mandatory} onChange={e => setEditForm(f => ({ ...f, Mandatory: e.target.checked }))} />
+                  <label htmlFor="editMandatory" style={{ ...labelStyle, marginBottom: 0 }}>🔒 Mandatory (auto-assign to matching employees)</label>
+                </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button type="submit" style={btnStyle} disabled={editSubmitting}>
                     {editSubmitting ? 'Saving...' : 'Save Changes'}
@@ -447,6 +517,20 @@ const AdminDashboard = ({ accessToken, user }) => {
                 <label style={labelStyle}>📄 PDF / Course Materials URL</label>
                 <input style={inputStyle} value={courseForm.CourseMaterials} onChange={e => setCourseForm(f => ({ ...f, CourseMaterials: e.target.value }))} placeholder="Paste SharePoint PDF link here" />
                 <small style={{ color: '#6b7280', fontSize: '12px' }}>Upload PDF to SharePoint, copy sharing link and paste here</small>
+              </div>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={labelStyle}>🎯 Target Job-Roles (JD)</label>
+                <input style={inputStyle} list="orgRoleSuggestions" value={courseForm.JobRoles} onChange={e => setCourseForm(f => ({ ...f, JobRoles: e.target.value }))} placeholder="e.g. Data Engineer;BI Analyst" />
+                <small style={{ color: '#6b7280', fontSize: '12px' }}>Semicolon-separated. Leave blank = all roles.</small>
+                <datalist id="orgRoleSuggestions">{orgRoles.map(r => <option key={r.Id} value={r.Title} />)}</datalist>
+              </div>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={labelStyle}>🏢 Target Departments</label>
+                <input style={inputStyle} value={courseForm.Departments} onChange={e => setCourseForm(f => ({ ...f, Departments: e.target.value }))} placeholder="e.g. Engineering;Analytics" />
+              </div>
+              <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input id="addMandatory" type="checkbox" checked={!!courseForm.Mandatory} onChange={e => setCourseForm(f => ({ ...f, Mandatory: e.target.checked }))} />
+                <label htmlFor="addMandatory" style={{ ...labelStyle, marginBottom: 0 }}>🔒 Mandatory (auto-assign to matching employees)</label>
               </div>
               <button type="submit" style={btnStyle} disabled={submitting}>
                 {submitting ? 'Saving...' : 'Add Course'}
@@ -521,6 +605,92 @@ const AdminDashboard = ({ accessToken, user }) => {
               {submitting ? 'Enrolling...' : 'Enroll Employee'}
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Org Roles (JD) Tab */}
+      {activeTab === 'orgroles' && (
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <div style={{ flex: '2', minWidth: '300px', background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
+              <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Job-Roles (JD Taxonomy) — {orgRoles.length}</h3>
+              <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px' }}>These job-roles drive training recommendations and auto-assignment. Separate from access-roles.</p>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>{['Job-Role', 'Department', ''].map(hh => <th key={hh} style={thStyle}>{hh}</th>)}</tr></thead>
+              <tbody>
+                {orgRoles.length === 0 ? (
+                  <tr><td colSpan={3} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No job-roles yet. Add some →</td></tr>
+                ) : orgRoles.map(r => (
+                  <tr key={r.Id}>
+                    <td style={tdStyle}><strong>{r.Title}</strong></td>
+                    <td style={tdStyle}>{r.Department || '—'}</td>
+                    <td style={tdStyle}>
+                      <button onClick={() => handleDeleteOrgRole(r.Id)} style={{ background: '#ef4444', color: 'white', padding: '5px 12px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🗑 Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ flex: '1', minWidth: '260px', background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', padding: '24px' }}>
+            <h3 style={{ margin: '0 0 18px', color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Add Job-Role</h3>
+            <form onSubmit={handleAddOrgRole}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={labelStyle}>Job-Role Name *</label>
+                <input style={inputStyle} value={orgRoleForm.Title} onChange={e => setOrgRoleForm(f => ({ ...f, Title: e.target.value }))} required placeholder="e.g. Data Engineer" />
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={labelStyle}>Department</label>
+                <input style={inputStyle} value={orgRoleForm.Department} onChange={e => setOrgRoleForm(f => ({ ...f, Department: e.target.value }))} placeholder="e.g. Engineering" />
+              </div>
+              <button type="submit" style={btnStyle}>Add Job-Role</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Employee Profiles Tab */}
+      {activeTab === 'profiles' && (
+        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+          <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
+            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Employee Profiles</h3>
+            <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px' }}>Set each employee's job-role, department and manager. Drives auto-assignment and assessment review routing.</p>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>{['Employee', 'Access Role', 'Job-Role (JD)', 'Department', 'Manager Email', ''].map(hh => <th key={hh} style={thStyle}>{hh}</th>)}</tr></thead>
+              <tbody>
+                {profiles.length === 0 ? (
+                  <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No profiles found.</td></tr>
+                ) : profiles.map(p => {
+                  const email = p.Title;
+                  const edit = profileEdits[email] || {};
+                  const val = (k, fallback) => edit[k] !== undefined ? edit[k] : fallback;
+                  const setEdit = (k, v) => setProfileEdits(pe => ({ ...pe, [email]: { ...edit, [k]: v } }));
+                  return (
+                    <tr key={p.Id}>
+                      <td style={tdStyle}><strong>{(email || '').split('@')[0]}</strong><div style={{ color: '#9ca3af', fontSize: '11px' }}>{email}</div></td>
+                      <td style={tdStyle}>{p.Role || 'Employee'}</td>
+                      <td style={tdStyle}>
+                        <input style={{ ...inputStyle, minWidth: '140px' }} list="orgRoleSuggestions2" value={val('JobRole', p.JobRole || '')} onChange={e => setEdit('JobRole', e.target.value)} placeholder="Job-role" />
+                      </td>
+                      <td style={tdStyle}>
+                        <input style={{ ...inputStyle, minWidth: '120px' }} value={val('Department', p.Department || '')} onChange={e => setEdit('Department', e.target.value)} placeholder="Department" />
+                      </td>
+                      <td style={tdStyle}>
+                        <input style={{ ...inputStyle, minWidth: '160px' }} value={val('ManagerEmail', p.ManagerEmail || '')} onChange={e => setEdit('ManagerEmail', e.target.value)} placeholder="manager@company.com" />
+                      </td>
+                      <td style={tdStyle}>
+                        <button onClick={() => handleSaveProfile(email)} style={{ ...btnStyle, padding: '6px 14px', fontSize: '13px' }}>Save</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <datalist id="orgRoleSuggestions2">{orgRoles.map(r => <option key={r.Id} value={r.Title} />)}</datalist>
+          </div>
         </div>
       )}
 
