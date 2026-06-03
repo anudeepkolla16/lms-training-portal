@@ -10,6 +10,27 @@ live data. Until then, the app runs on built-in mock/empty fallbacks so the UI i
 > - **Job-role / JD** (`JobRole`, e.g. "Data Engineer") — controls which training is relevant.
 > They are different columns and must not be conflated.
 
+## Automated provisioning (recommended — one command)
+
+Instead of clicking through the UI, run one of the provisioning scripts in `scripts/`. Both are
+**idempotent** (safe to re-run; existing lists/columns are skipped).
+
+**Option A — Node (no install beyond Node):**
+```bash
+# Get a Graph token with Sites.Manage.All from https://developer.microsoft.com/graph/graph-explorer
+GRAPH_TOKEN="<access-token>" node scripts/provision-sharepoint.js
+```
+> Note: creating lists/columns needs **Sites.Manage.All** (or Sites.FullControl.All) — the app's
+> runtime `Sites.ReadWrite.All` scope is enough to read/write items but **not** to create lists.
+
+**Option B — PnP PowerShell:**
+```powershell
+Install-Module PnP.PowerShell -Scope CurrentUser   # first time only
+./scripts/Provision-SharePoint.ps1 -SiteUrl "https://sarasanalytics0.sharepoint.com/sites/training-library"
+```
+
+Either script creates everything in the manual reference below. If you prefer to do it by hand, follow the tables.
+
 ## 1. New list: `OrgRoles` (job-role / JD taxonomy — your 22 roles × 10 departments)
 | Column | Type | Notes |
 |---|---|---|
