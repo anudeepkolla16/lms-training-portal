@@ -88,16 +88,6 @@ const Dashboard = ({ accessToken, user }) => {
   const statusBg = (s) => s === 'Completed' ? '#d1fae5' : s === 'Active' ? '#dbeafe' : '#fef3c7';
   const statusText = (s) => s === 'Completed' ? '#065f46' : s === 'Active' ? '#1e40af' : '#92400e';
 
-  // Build SharePoint embed URL from sharing link
-  const getEmbedUrl = (url) => {
-    if (!url) return null;
-    // For SharePoint sharing links, add action=embedview
-    if (url.includes('sharepoint.com')) {
-      const sep = url.includes('?') ? '&' : '?';
-      return `${url}${sep}action=embedview`;
-    }
-    return url;
-  };
 
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 20px', background: '#f8fafc', minHeight: '100vh' }}>
