@@ -5,7 +5,7 @@ import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import HRDashboard from './components/HRDashboard';
 import ManagerDashboard from './components/ManagerDashboard';
-import { getUserRole } from './services/sharePointAPI';
+import { getUserProfile } from './services/sharePointAPI';
 import './App.css';
 
 const SP_SCOPES = ["https://graph.microsoft.com/Sites.ReadWrite.All"];
@@ -14,9 +14,10 @@ const AppContent = () => {
   const isAuthenticated = useIsAuthenticated();
   const { instance, accounts } = useMsal();
   const [accessToken, setAccessToken] = React.useState(null);
-  const [userRole, setUserRole] = React.useState(null);
+  const [userProfile, setUserProfile] = React.useState(null);
   const [roleLoading, setRoleLoading] = React.useState(false);
   const [showMyTraining, setShowMyTraining] = React.useState(false);
+  const userRole = userProfile?.role || null;
 
   // Get SharePoint token after login completes
   React.useEffect(() => {
@@ -38,17 +39,17 @@ const AppContent = () => {
     }
   }, [isAuthenticated, accounts, instance, accessToken]);
 
-  // Get user role
+  // Get user profile (access-role + job-role/department/manager for training features)
   React.useEffect(() => {
-    if (accessToken && accounts.length > 0 && userRole === null) {
+    if (accessToken && accounts.length > 0 && userProfile === null) {
       const email = accounts[0].username || '';
       setRoleLoading(true);
-      getUserRole(accessToken, email).then(role => {
-        setUserRole(role);
+      getUserProfile(accessToken, email).then(profile => {
+        setUserProfile(profile);
         setRoleLoading(false);
       });
     }
-  }, [accessToken, accounts, userRole]);
+  }, [accessToken, accounts, userProfile]);
 
   // Not logged in
   if (!isAuthenticated) {
@@ -89,7 +90,7 @@ const AppContent = () => {
   }
 
   // Loading dashboard data
-  if (!accessToken || roleLoading || userRole === null) {
+  if (!accessToken || roleLoading || userProfile === null) {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -119,13 +120,13 @@ const AppContent = () => {
 
   const renderDashboard = () => {
     if (showMyTraining || userRole === 'Employee') {
-      return <Dashboard accessToken={accessToken} user={accounts[0]} />;
+      return <Dashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
     }
     switch (userRole) {
-      case 'Admin': return <AdminDashboard accessToken={accessToken} user={accounts[0]} />;
-      case 'HR': return <HRDashboard accessToken={accessToken} user={accounts[0]} />;
-      case 'Manager': return <ManagerDashboard accessToken={accessToken} user={accounts[0]} />;
-      default: return <Dashboard accessToken={accessToken} user={accounts[0]} />;
+      case 'Admin': return <AdminDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
+      case 'HR': return <HRDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
+      case 'Manager': return <ManagerDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
+      default: return <Dashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
     }
   };
 
