@@ -120,11 +120,14 @@ export const enrollEmployee = async (token, data) => {
 export const createCourse = async (token, data) => {
   try {
     const siteId = await getSiteId(token);
-    const fields = { ...data };
-    // Handle CourseMaterials - send as URL string for single-line text column
-    if (fields.CourseMaterials && typeof fields.CourseMaterials === 'string') {
-      fields.CourseMaterials = fields.CourseMaterials;
-    }
+    // Only send safe fields - Description conflicts with SharePoint built-in
+    const fields = { Title: data.Title };
+    if (data.Duration) fields.Duration = data.Duration;
+    if (data.Department) fields.Department = data.Department;
+    if (data.CourseMaterials) fields.CourseMaterials = String(data.CourseMaterials);
+    // Use CourseDescription to avoid conflict with built-in Description field
+    if (data.Description) fields.CourseDescription = data.Description;
+
     const res = await axios.post(
       `${GRAPH}/sites/${siteId}/lists/Courses/items`,
       { fields },
