@@ -110,6 +110,8 @@ const AdminDashboard = ({ accessToken, user }) => {
   const [orgRoleForm, setOrgRoleForm] = React.useState({ Title: '', Department: '' });
   const [profiles, setProfiles] = React.useState([]);
   const [profileEdits, setProfileEdits] = React.useState({});
+  const [newEmployee, setNewEmployee] = React.useState({ email: '', Role: 'Employee', JobRole: '', Department: '', ManagerEmail: '' });
+  const [addingEmployee, setAddingEmployee] = React.useState(false);
   const [orgLoaded, setOrgLoaded] = React.useState(false);
 
   // Quiz state
@@ -188,6 +190,31 @@ const AdminDashboard = ({ accessToken, user }) => {
       setMsg(`Profile saved for ${email.split('@')[0]}.`);
       setProfiles(await getAllUserProfiles(accessToken));
     } catch { setMsg('Error saving profile. Please try again.'); }
+  };
+
+  const handleAddEmployee = async (ev) => {
+    ev.preventDefault();
+    const email = (newEmployee.email || '').trim();
+    if (!email) return;
+    if (profiles.some(p => (p.Title || '').toLowerCase() === email.toLowerCase())) {
+      setMsg('That employee already has a profile — edit it in the table below.');
+      return;
+    }
+    setAddingEmployee(true);
+    setMsg('');
+    try {
+      await upsertUserProfile(accessToken, {
+        email,
+        Role: newEmployee.Role,
+        JobRole: newEmployee.JobRole,
+        Department: newEmployee.Department,
+        ManagerEmail: newEmployee.ManagerEmail,
+      });
+      setMsg(`Employee ${email.split('@')[0]} added.`);
+      setNewEmployee({ email: '', Role: 'Employee', JobRole: '', Department: '', ManagerEmail: '' });
+      setProfiles(await getAllUserProfiles(accessToken));
+    } catch { setMsg('Error adding employee. Please try again.'); }
+    setAddingEmployee(false);
   };
 
   const handleQuizTabActivate = async () => {
@@ -652,9 +679,40 @@ const AdminDashboard = ({ accessToken, user }) => {
 
       {/* Employee Profiles Tab */}
       {activeTab === 'profiles' && (
+        <div>
+        {/* Add Employee */}
+        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', padding: '20px 24px', marginBottom: '18px' }}>
+          <h3 style={{ margin: '0 0 14px', color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>➕ Add Employee</h3>
+          <form onSubmit={handleAddEmployee} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ flex: '2', minWidth: '200px' }}>
+              <label style={labelStyle}>Employee Email *</label>
+              <input type="email" style={inputStyle} value={newEmployee.email} onChange={e => setNewEmployee(f => ({ ...f, email: e.target.value }))} required placeholder="employee@sarasanalytics.com" />
+            </div>
+            <div style={{ flex: '1', minWidth: '120px' }}>
+              <label style={labelStyle}>Access Role</label>
+              <select style={inputStyle} value={newEmployee.Role} onChange={e => setNewEmployee(f => ({ ...f, Role: e.target.value }))}>
+                {['Employee', 'Manager', 'HR', 'Admin'].map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: '1', minWidth: '140px' }}>
+              <label style={labelStyle}>Job-Role (JD)</label>
+              <input style={inputStyle} list="orgRoleSuggestions2" value={newEmployee.JobRole} onChange={e => setNewEmployee(f => ({ ...f, JobRole: e.target.value }))} placeholder="e.g. Data Engineer" />
+            </div>
+            <div style={{ flex: '1', minWidth: '120px' }}>
+              <label style={labelStyle}>Department</label>
+              <input style={inputStyle} value={newEmployee.Department} onChange={e => setNewEmployee(f => ({ ...f, Department: e.target.value }))} placeholder="e.g. Engineering" />
+            </div>
+            <div style={{ flex: '1', minWidth: '160px' }}>
+              <label style={labelStyle}>Manager Email</label>
+              <input type="email" style={inputStyle} value={newEmployee.ManagerEmail} onChange={e => setNewEmployee(f => ({ ...f, ManagerEmail: e.target.value }))} placeholder="manager@company.com" />
+            </div>
+            <button type="submit" style={btnStyle} disabled={addingEmployee}>{addingEmployee ? 'Adding...' : 'Add'}</button>
+          </form>
+        </div>
+
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
           <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
-            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Employee Profiles</h3>
+            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Employee Profiles ({profiles.length})</h3>
             <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px' }}>Set each employee's job-role, department and manager. Drives auto-assignment and assessment review routing.</p>
           </div>
           <div style={{ overflowX: 'auto' }}>
@@ -691,6 +749,7 @@ const AdminDashboard = ({ accessToken, user }) => {
             </table>
             <datalist id="orgRoleSuggestions2">{orgRoles.map(r => <option key={r.Id} value={r.Title} />)}</datalist>
           </div>
+        </div>
         </div>
       )}
 
