@@ -10,7 +10,6 @@ const Dashboard = ({ accessToken, user }) => {
   const [quizCourse, setQuizCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [updating, setUpdating] = useState(false);
 
   const userEmail = user.username || user.mail || user.idTokenClaims?.preferred_username || '';
   const userName = user.givenName || user.name || user.username?.split('@')[0] || 'there';
@@ -39,15 +38,12 @@ const Dashboard = ({ accessToken, user }) => {
   };
 
   const handleMarkComplete = async (enrollmentId) => {
-    setUpdating(true);
     try {
       await updateEnrollmentStatus(accessToken, enrollmentId, 'Completed');
       await reload();
       setSelectedCourse(prev => prev ? { ...prev, Status: 'Completed' } : null);
     } catch (err) {
       setError('Failed to update. Please try again.');
-    } finally {
-      setUpdating(false);
     }
   };
 
