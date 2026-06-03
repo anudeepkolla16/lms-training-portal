@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { saveSelfAssessment, updateAssessment } from '../services/sharePointAPI';
+import { saveSelfAssessment, updateAssessment, sendMail } from '../services/sharePointAPI';
 
 // Self-assessment after completing a course.
 //  - rating >= 4  -> routed to the employee's manager for review (PendingManagerReview)
@@ -28,6 +28,20 @@ const SelfAssessmentModal = ({ course, userEmail, managerEmail, accessToken, exi
         await updateAssessment(accessToken, existingAssessment.Id, fields);
       } else {
         await saveSelfAssessment(accessToken, fields);
+      }
+      // Notify the manager by email when a high rating needs their review (best-effort).
+      if (nextState === 'PendingManagerReview' && managerEmail) {
+        const who = (userEmail || '').split('@')[0];
+        const portal = typeof window !== 'undefined' ? window.location.origin : '';
+        sendMail(accessToken, {
+          to: managerEmail,
+          subject: `Training review needed: ${who} — ${course.Title}`,
+          html: `<p>Hi,</p>
+            <p><strong>${userEmail}</strong> completed <strong>${course.Title}</strong> and self-rated it <strong>${rating}/5</strong>${comment ? ` with the note: <em>“${comment}”</em>` : ''}.</p>
+            <p>This needs your review. Open the Training Portal and go to <strong>Assessment Reviews</strong> to approve or adjust the rating.</p>
+            ${portal ? `<p><a href="${portal}">Open Training Portal</a></p>` : ''}
+            <p>— Training Portal</p>`,
+        });
       }
       onSubmitted && onSubmitted(nextState);
     } catch (e) {
