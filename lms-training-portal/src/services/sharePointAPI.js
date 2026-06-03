@@ -125,7 +125,7 @@ export const createCourse = async (token, data) => {
     if (data.Duration) fields.Duration = data.Duration;
     if (data.Department) fields.Department = data.Department;
     if (data.CourseMaterials) fields.CourseMaterials = String(data.CourseMaterials);
-    if (data.Description) fields.CourseDescription = data.Description;
+    if (data.Description) fields.Description = data.Description;
 
     const res = await axios.post(
       `${GRAPH}/sites/${siteId}/lists/Courses/items`,
