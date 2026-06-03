@@ -224,3 +224,15 @@ export const getCourseDetails = async (token, courseId) => {
     return mapItem(res.data);
   } catch (e) { return null; }
 };
+
+export const createQuizQuestion = async (token, data) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.post(
+      `${GRAPH}/sites/${siteId}/lists/Quiz%20Questions/items`,
+      { fields: data },
+      h(token)
+    );
+    return res.data;
+  } catch (e) { console.error('createQuizQuestion error:', e?.response?.data || e.message); throw e; }
+};

@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, getQuizResults } from '../services/sharePointAPI';
 
 
 const inputStyle = {
@@ -79,6 +79,8 @@ const ManagerDashboard = ({ accessToken, user }) => {
   const [msg, setMsg] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [assignForm, setAssignForm] = React.useState({ EmployeeEmail: '', CourseTitle: '', Department: '', DueDate: '' });
+  const [quizResults, setQuizResults] = React.useState([]);
+  const [quizLoaded, setQuizLoaded] = React.useState(false);
   const today = new Date();
 
   React.useEffect(() => {
@@ -91,6 +93,16 @@ const ManagerDashboard = ({ accessToken, user }) => {
     };
     load();
   }, [accessToken]);
+
+  // Load quiz results lazily when team tab is first visited (or we can load alongside team tab)
+  React.useEffect(() => {
+    if (!quizLoaded && !loading) {
+      getQuizResults(accessToken).then(results => {
+        setQuizResults(results);
+        setQuizLoaded(true);
+      });
+    }
+  }, [loading, quizLoaded, accessToken]);
 
   const completedCount = enrollments.filter(e => e.Status === 'Completed').length;
   const overdueCount = enrollments.filter(e => e.DueDate && new Date(e.DueDate) < today && e.Status !== 'Completed').length;
@@ -242,6 +254,58 @@ const ManagerDashboard = ({ accessToken, user }) => {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Team Quiz Results Section */}
+          {quizLoaded && (
+            <div style={{ marginTop: '28px', background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
+                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '15px', fontWeight: '700' }}>Team Quiz Results</h3>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      {['Employee', 'Course', 'Score %', 'Result'].map(h => (
+                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', background: '#fffbeb', color: '#374151', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quizResults.filter(r => {
+                      const email = r.EmployeeID || r.Employee || '';
+                      return uniqueEmployees.includes(email);
+                    }).length === 0 ? (
+                      <tr><td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>No quiz results for team members yet.</td></tr>
+                    ) : (
+                      quizResults
+                        .filter(r => {
+                          const email = r.EmployeeID || r.Employee || '';
+                          return uniqueEmployees.includes(email);
+                        })
+                        .map((r, idx) => {
+                          const score = r.Score ?? 0;
+                          const tot = r.TotalQuestions ?? r.Total ?? 0;
+                          const pct = tot > 0 ? Math.round((score / tot) * 100) : (r.Percentage ?? 0);
+                          const isPassed = r.Passed === true || r.Passed === 'true' || r.Passed === 'Yes' || pct >= 70;
+                          return (
+                            <tr key={r.Id || idx}>
+                              <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', color: '#374151', fontSize: '13px' }}>{(r.EmployeeID || r.Employee || '').split('@')[0] || '—'}</td>
+                              <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', color: '#374151', fontSize: '13px' }}>{r.CourseTitle || r.Title || '—'}</td>
+                              <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', color: '#374151', fontSize: '13px', fontWeight: '600' }}>{pct}%</td>
+                              <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
+                                <span style={{ background: isPassed ? '#d1fae5' : '#fee2e2', color: isPassed ? '#065f46' : '#991b1b', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>
+                                  {isPassed ? 'Pass' : 'Fail'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

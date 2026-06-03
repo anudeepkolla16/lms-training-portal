@@ -16,6 +16,7 @@ const AppContent = () => {
   const [accessToken, setAccessToken] = React.useState(null);
   const [userRole, setUserRole] = React.useState(null);
   const [roleLoading, setRoleLoading] = React.useState(false);
+  const [showMyTraining, setShowMyTraining] = React.useState(false);
 
   // Get SharePoint token after login completes
   React.useEffect(() => {
@@ -108,7 +109,18 @@ const AppContent = () => {
         ? 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)'
         : 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
 
+  const roleAccentColor = userRole === 'HR'
+    ? '#8b5cf6'
+    : userRole === 'Manager'
+      ? '#f59e0b'
+      : userRole === 'Admin'
+        ? '#0ea5e9'
+        : '#10b981';
+
   const renderDashboard = () => {
+    if (showMyTraining || userRole === 'Employee') {
+      return <Dashboard accessToken={accessToken} user={accounts[0]} />;
+    }
     switch (userRole) {
       case 'Admin': return <AdminDashboard accessToken={accessToken} user={accounts[0]} />;
       case 'HR': return <HRDashboard accessToken={accessToken} user={accounts[0]} />;
@@ -135,6 +147,18 @@ const AppContent = () => {
           <span style={{ fontSize: '13px', opacity: 0.9 }}>
             {accounts[0]?.name || accounts[0]?.username}
           </span>
+          {userRole !== 'Employee' && (
+            <button
+              onClick={() => setShowMyTraining(v => !v)}
+              style={{
+                background: 'white', color: roleAccentColor,
+                padding: '8px 16px', borderRadius: '8px', border: 'none',
+                cursor: 'pointer', fontWeight: '600', fontSize: '13px'
+              }}
+            >
+              {showMyTraining ? '← Back to Dashboard' : '📚 My Training'}
+            </button>
+          )}
           <button
             onClick={() => instance.logoutRedirect()}
             style={{

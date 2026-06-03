@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, createCourse } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, createCourse, createQuizQuestion, getQuizResults } from '../services/sharePointAPI';
 
 const thStyle = {
   padding: '10px 14px',
@@ -100,6 +100,12 @@ const AdminDashboard = ({ accessToken, user }) => {
   const [enrollForm, setEnrollForm] = React.useState({ EmployeeID: '', CourseTitle: '', Department: '', DueDate: '' });
   const [submitting, setSubmitting] = React.useState(false);
 
+  // Quiz state
+  const [quizForm, setQuizForm] = React.useState({ CourseTitle: '', Question: '', OptionA: '', OptionB: '', OptionC: '', OptionD: '', CorrectAnswer: 'A' });
+  const [quizResults, setQuizResults] = React.useState([]);
+  const [quizResultsLoaded, setQuizResultsLoaded] = React.useState(false);
+  const [quizSubmitting, setQuizSubmitting] = React.useState(false);
+
   React.useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -129,8 +135,42 @@ const AdminDashboard = ({ accessToken, user }) => {
     { id: 'overview', label: 'Overview' },
     { id: 'courses', label: 'Courses' },
     { id: 'enrollments', label: 'All Enrollments' },
-    { id: 'enroll', label: 'Enroll Employee' }
+    { id: 'enroll', label: 'Enroll Employee' },
+    { id: 'quiz', label: 'Quiz' }
   ];
+
+  const handleQuizTabActivate = async () => {
+    setActiveTab('quiz');
+    setMsg('');
+    if (!quizResultsLoaded) {
+      const results = await getQuizResults(accessToken);
+      setQuizResults(results);
+      setQuizResultsLoaded(true);
+    }
+  };
+
+  const handleAddQuizQuestion = async (ev) => {
+    ev.preventDefault();
+    setQuizSubmitting(true);
+    setMsg('');
+    try {
+      await createQuizQuestion(accessToken, {
+        Title: quizForm.Question,
+        CourseTitle: quizForm.CourseTitle,
+        Question: quizForm.Question,
+        OptionA: quizForm.OptionA,
+        OptionB: quizForm.OptionB,
+        OptionC: quizForm.OptionC,
+        OptionD: quizForm.OptionD,
+        CorrectAnswer: quizForm.CorrectAnswer
+      });
+      setMsg('Quiz question added successfully.');
+      setQuizForm({ CourseTitle: '', Question: '', OptionA: '', OptionB: '', OptionC: '', OptionD: '', CorrectAnswer: 'A' });
+    } catch {
+      setMsg('Error adding quiz question. Please try again.');
+    }
+    setQuizSubmitting(false);
+  };
 
   const handleAddCourse = async (ev) => {
     ev.preventDefault();
@@ -198,7 +238,7 @@ const AdminDashboard = ({ accessToken, user }) => {
         {tabs.map(t => (
           <button
             key={t.id}
-            onClick={() => { setActiveTab(t.id); setMsg(''); }}
+            onClick={() => t.id === 'quiz' ? handleQuizTabActivate() : (() => { setActiveTab(t.id); setMsg(''); })()}
             style={{
               padding: '8px 20px',
               borderRadius: '7px',
@@ -397,6 +437,119 @@ const AdminDashboard = ({ accessToken, user }) => {
               {submitting ? 'Enrolling...' : 'Enroll Employee'}
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Quiz Tab */}
+      {activeTab === 'quiz' && (
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          {/* Section A: Add Quiz Question */}
+          <div style={{ flex: '1', minWidth: '280px', background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', padding: '24px' }}>
+            <h3 style={{ margin: '0 0 18px', color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Add Quiz Question</h3>
+            <form onSubmit={handleAddQuizQuestion}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={labelStyle}>Course *</label>
+                <select style={inputStyle} value={quizForm.CourseTitle} onChange={e => setQuizForm(f => ({ ...f, CourseTitle: e.target.value }))} required>
+                  <option value="">Select a course</option>
+                  {courses.map(c => (
+                    <option key={c.Id} value={c.Title}>{c.Title}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={labelStyle}>Question *</label>
+                <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: '80px' }} value={quizForm.Question} onChange={e => setQuizForm(f => ({ ...f, Question: e.target.value }))} required placeholder="Enter the question text" />
+              </div>
+              {['A', 'B', 'C', 'D'].map(opt => (
+                <div key={opt} style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>Option {opt} *</label>
+                  <input style={inputStyle} value={quizForm[`Option${opt}`]} onChange={e => setQuizForm(f => ({ ...f, [`Option${opt}`]: e.target.value }))} required placeholder={`Option ${opt}`} />
+                </div>
+              ))}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={labelStyle}>Correct Answer *</label>
+                <select style={inputStyle} value={quizForm.CorrectAnswer} onChange={e => setQuizForm(f => ({ ...f, CorrectAnswer: e.target.value }))}>
+                  {['A', 'B', 'C', 'D'].map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+              <button type="submit" style={btnStyle} disabled={quizSubmitting}>
+                {quizSubmitting ? 'Saving...' : 'Add Question'}
+              </button>
+            </form>
+          </div>
+
+          {/* Section B: Quiz Results Table */}
+          <div style={{ flex: '2', minWidth: '320px' }}>
+            {/* Summary */}
+            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '18px' }}>
+              {(() => {
+                const total = quizResults.length;
+                const passed = quizResults.filter(r => {
+                  const pct = r.TotalQuestions > 0 ? Math.round((r.Score / r.TotalQuestions) * 100) : (r.Percentage || 0);
+                  return (r.Passed === true || r.Passed === 'true' || r.Passed === 'Yes') || pct >= 70;
+                }).length;
+                const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
+                return (
+                  <>
+                    <div style={{ background: 'white', borderRadius: '10px', padding: '16px 20px', flex: '1', minWidth: '120px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', borderTop: `4px solid ${ACCENT}` }}>
+                      <div style={{ fontSize: '22px', fontWeight: '700', color: '#1e293b' }}>{total}</div>
+                      <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>Total Attempts</div>
+                    </div>
+                    <div style={{ background: 'white', borderRadius: '10px', padding: '16px 20px', flex: '1', minWidth: '120px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', borderTop: '4px solid #10b981' }}>
+                      <div style={{ fontSize: '22px', fontWeight: '700', color: '#1e293b' }}>{passRate}%</div>
+                      <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>Pass Rate</div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
+                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '15px', fontWeight: '700' }}>Quiz Results</h3>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      {['Employee', 'Course', 'Score', 'Total', 'Percentage', 'Result', 'Date'].map(h => (
+                        <th key={h} style={thStyle}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quizResults.length === 0 ? (
+                      <tr><td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No quiz results found.</td></tr>
+                    ) : (
+                      quizResults.map((r, idx) => {
+                        const score = r.Score ?? 0;
+                        const total = r.TotalQuestions ?? r.Total ?? 0;
+                        const pct = total > 0 ? Math.round((score / total) * 100) : (r.Percentage ?? 0);
+                        const passed = r.Passed === true || r.Passed === 'true' || r.Passed === 'Yes' || pct >= 70;
+                        return (
+                          <tr key={r.Id || idx}>
+                            <td style={tdStyle}>{r.EmployeeID || r.Employee || '—'}</td>
+                            <td style={tdStyle}>{r.CourseTitle || r.Title || '—'}</td>
+                            <td style={tdStyle}>{score}</td>
+                            <td style={tdStyle}>{total || '—'}</td>
+                            <td style={tdStyle}>{pct}%</td>
+                            <td style={tdStyle}>
+                              <span style={{ background: passed ? '#d1fae5' : '#fee2e2', color: passed ? '#065f46' : '#991b1b', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>
+                                {passed ? 'Pass' : 'Fail'}
+                              </span>
+                            </td>
+                            <td style={tdStyle}>{r.AttemptDate ? new Date(r.AttemptDate).toLocaleDateString() : '—'}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { getAllEnrollments } from '../services/sharePointAPI';
+import { getAllEnrollments, getQuizResults } from '../services/sharePointAPI';
 
 const thStyle = {
   padding: '10px 14px',
@@ -85,6 +85,8 @@ const HRDashboard = ({ accessToken, user }) => {
   const [enrollments, setEnrollments] = React.useState([]);
   const [activeTab, setActiveTab] = React.useState('compliance');
   const [loading, setLoading] = React.useState(true);
+  const [quizResults, setQuizResults] = React.useState([]);
+  const [quizLoaded, setQuizLoaded] = React.useState(false);
   const today = new Date();
 
   React.useEffect(() => {
@@ -96,6 +98,15 @@ const HRDashboard = ({ accessToken, user }) => {
     };
     load();
   }, [accessToken]);
+
+  const handleQuizTabActivate = async () => {
+    setActiveTab('quiz');
+    if (!quizLoaded) {
+      const results = await getQuizResults(accessToken);
+      setQuizResults(results);
+      setQuizLoaded(true);
+    }
+  };
 
   const uniqueEmployees = new Set(enrollments.map(e => e.EmployeeID).filter(Boolean)).size;
   const completedCount = enrollments.filter(e => e.Status === 'Completed').length;
@@ -134,10 +145,37 @@ const HRDashboard = ({ accessToken, user }) => {
     URL.revokeObjectURL(url);
   };
 
+  const exportQuizCSV = () => {
+    const headers = ['Employee', 'Course', 'Score', 'Percentage', 'Result', 'Date'];
+    const rows = quizResults.map(r => {
+      const score = r.Score ?? 0;
+      const total = r.TotalQuestions ?? r.Total ?? 0;
+      const pct = total > 0 ? Math.round((score / total) * 100) : (r.Percentage ?? 0);
+      const passed = r.Passed === true || r.Passed === 'true' || r.Passed === 'Yes' || pct >= 70;
+      return [
+        r.EmployeeID || r.Employee || '',
+        r.CourseTitle || r.Title || '',
+        `${score}${total ? '/' + total : ''}`,
+        `${pct}%`,
+        passed ? 'Pass' : 'Fail',
+        r.AttemptDate ? new Date(r.AttemptDate).toLocaleDateString() : ''
+      ];
+    });
+    const csv = [headers, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `quiz-results-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const tabs = [
     { id: 'compliance', label: 'Compliance Report' },
     { id: 'overdue', label: `Overdue (${overdueList.length})` },
-    { id: 'all', label: 'All Enrollments' }
+    { id: 'all', label: 'All Enrollments' },
+    { id: 'quiz', label: 'Quiz Results' }
   ];
 
   if (loading) return (
@@ -172,7 +210,7 @@ const HRDashboard = ({ accessToken, user }) => {
         {tabs.map(t => (
           <button
             key={t.id}
-            onClick={() => setActiveTab(t.id)}
+            onClick={() => t.id === 'quiz' ? handleQuizTabActivate() : setActiveTab(t.id)}
             style={{
               padding: '8px 18px',
               borderRadius: '7px',
@@ -307,6 +345,90 @@ const HRDashboard = ({ accessToken, user }) => {
           </div>
         </div>
       )}
+
+      {/* Quiz Results Tab */}
+      {activeTab === 'quiz' && (() => {
+        const total = quizResults.length;
+        const passed = quizResults.filter(r => {
+          const score = r.Score ?? 0;
+          const tot = r.TotalQuestions ?? r.Total ?? 0;
+          const pct = tot > 0 ? Math.round((score / tot) * 100) : (r.Percentage ?? 0);
+          return r.Passed === true || r.Passed === 'true' || r.Passed === 'Yes' || pct >= 70;
+        }).length;
+        const failed = total - passed;
+        const avgScore = total > 0
+          ? Math.round(quizResults.reduce((sum, r) => {
+              const score = r.Score ?? 0;
+              const tot = r.TotalQuestions ?? r.Total ?? 0;
+              return sum + (tot > 0 ? (score / tot) * 100 : (r.Percentage ?? 0));
+            }, 0) / total)
+          : 0;
+        return (
+          <div>
+            {/* Summary Cards */}
+            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '20px' }}>
+              {[
+                { label: 'Total Attempts', value: total, color: ACCENT, icon: '📝' },
+                { label: 'Passed', value: passed, color: '#10b981', icon: '✅' },
+                { label: 'Failed', value: failed, color: '#ef4444', icon: '❌' },
+                { label: 'Avg Score', value: `${avgScore}%`, color: '#f59e0b', icon: '📊' }
+              ].map(c => (
+                <div key={c.label} style={{ background: 'white', borderRadius: '10px', padding: '18px 20px', flex: '1', minWidth: '120px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', borderTop: `4px solid ${c.color}` }}>
+                  <div style={{ fontSize: '22px', marginBottom: '4px' }}>{c.icon}</div>
+                  <div style={{ fontSize: '22px', fontWeight: '700', color: '#1e293b' }}>{c.value}</div>
+                  <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>{c.label}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '15px', fontWeight: '700' }}>Quiz Results ({total})</h3>
+                <button onClick={exportQuizCSV} style={{ ...btnStyle, padding: '7px 16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  ⬇ Export CSV
+                </button>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      {['Employee', 'Course', 'Score', 'Percentage', 'Result', 'Date'].map(h => (
+                        <th key={h} style={thStyle}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quizResults.length === 0 ? (
+                      <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No quiz results found.</td></tr>
+                    ) : (
+                      quizResults.map((r, idx) => {
+                        const score = r.Score ?? 0;
+                        const tot = r.TotalQuestions ?? r.Total ?? 0;
+                        const pct = tot > 0 ? Math.round((score / tot) * 100) : (r.Percentage ?? 0);
+                        const isPassed = r.Passed === true || r.Passed === 'true' || r.Passed === 'Yes' || pct >= 70;
+                        return (
+                          <tr key={r.Id || idx}>
+                            <td style={tdStyle}>{r.EmployeeID || r.Employee || '—'}</td>
+                            <td style={tdStyle}>{r.CourseTitle || r.Title || '—'}</td>
+                            <td style={tdStyle}>{score}{tot ? `/${tot}` : ''}</td>
+                            <td style={tdStyle}>{pct}%</td>
+                            <td style={tdStyle}>
+                              <span style={{ background: isPassed ? '#d1fae5' : '#fee2e2', color: isPassed ? '#065f46' : '#991b1b', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>
+                                {isPassed ? 'Pass' : 'Fail'}
+                              </span>
+                            </td>
+                            <td style={tdStyle}>{r.AttemptDate ? new Date(r.AttemptDate).toLocaleDateString() : '—'}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
