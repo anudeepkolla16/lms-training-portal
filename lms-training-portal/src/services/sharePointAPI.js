@@ -63,8 +63,8 @@ export const getMyEnrollments = async (token, userEmail) => {
     );
     return (res.data?.value || res.d?.results || []).map(mapItem);
   } catch (e) {
-    console.warn('getMyEnrollments fallback:', e?.response?.data?.error?.message || e.message);
-    return MOCK_ENROLLMENTS.filter(x => x.EmployeeID?.toLowerCase() === (userEmail || '').toLowerCase());
+    console.warn('getMyEnrollments error:', e?.response?.data?.error?.message || e.message);
+    return []; // Return empty - no mock data for employee view
   }
 };
 
