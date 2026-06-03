@@ -120,13 +120,21 @@ export const enrollEmployee = async (token, data) => {
 export const createCourse = async (token, data) => {
   try {
     const siteId = await getSiteId(token);
+    const fields = { ...data };
+    // Handle CourseMaterials - send as URL string for single-line text column
+    if (fields.CourseMaterials && typeof fields.CourseMaterials === 'string') {
+      fields.CourseMaterials = fields.CourseMaterials;
+    }
     const res = await axios.post(
       `${GRAPH}/sites/${siteId}/lists/Courses/items`,
-      { fields: data },
+      { fields },
       h(token)
     );
     return res.data;
-  } catch (e) { console.error('createCourse error:', e?.response?.data || e.message); throw e; }
+  } catch (e) {
+    console.error('createCourse error:', JSON.stringify(e?.response?.data));
+    throw e;
+  }
 };
 
 export const getUserRole = async (token, userEmail) => {
