@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const PROXY_URL = 'https://saraslms.anudeep-kolla.workers.dev';
+
 const callProxy = async (token, endpoint, method = 'GET', data = null) => {
-  const res = await axios.post('/api/proxy', { token, endpoint, method, data });
+  const res = await axios.post(PROXY_URL, { token, endpoint, method, data });
   return res.data;
 };
 
