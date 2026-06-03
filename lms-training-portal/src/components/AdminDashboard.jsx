@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, createCourse, createQuizQuestion, getQuizResults } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults } from '../services/sharePointAPI';
 
 const thStyle = {
   padding: '10px 14px',
@@ -99,6 +99,11 @@ const AdminDashboard = ({ accessToken, user }) => {
   const [courseForm, setCourseForm] = React.useState({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '' });
   const [enrollForm, setEnrollForm] = React.useState({ EmployeeID: '', CourseTitle: '', Department: '', DueDate: '' });
   const [submitting, setSubmitting] = React.useState(false);
+
+  // Edit course state
+  const [editingCourse, setEditingCourse] = React.useState(null);
+  const [editForm, setEditForm] = React.useState({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '' });
+  const [editSubmitting, setEditSubmitting] = React.useState(false);
 
   // Quiz state
   const [quizForm, setQuizForm] = React.useState({ CourseTitle: '', Question: '', OptionA: '', OptionB: '', OptionC: '', OptionD: '', CorrectAnswer: 'A' });
@@ -210,6 +215,34 @@ const AdminDashboard = ({ accessToken, user }) => {
     setSubmitting(false);
   };
 
+  const handleEditCourse = (course) => {
+    setEditingCourse(course);
+    setEditForm({
+      Title: course.Title || '',
+      Description: course.Description || '',
+      Duration: course.Duration || '',
+      Department: course.Department || '',
+      CourseMaterials: course.CourseMaterials || ''
+    });
+    setMsg('');
+  };
+
+  const handleSaveEdit = async (ev) => {
+    ev.preventDefault();
+    setEditSubmitting(true);
+    setMsg('');
+    try {
+      await updateCourse(accessToken, editingCourse.Id, editForm);
+      setMsg('Course updated successfully.');
+      setEditingCourse(null);
+      const c = await getCourses(accessToken);
+      setCourses(c);
+    } catch {
+      setMsg('Error updating course. Please try again.');
+    }
+    setEditSubmitting(false);
+  };
+
   if (loading) return (
     <div style={{ padding: '60px', textAlign: 'center', color: '#6b7280' }}>
       Loading admin dashboard...
@@ -318,14 +351,14 @@ const AdminDashboard = ({ accessToken, user }) => {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Title', 'Description', 'Duration', 'Department'].map(h => (
+                  {['Title', 'Description', 'Duration', 'Department', 'Actions'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {courses.length === 0 ? (
-                  <tr><td colSpan={4} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No courses found.</td></tr>
+                  <tr><td colSpan={5} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No courses found.</td></tr>
                 ) : (
                   courses.map(c => (
                     <tr key={c.Id}>
@@ -333,12 +366,63 @@ const AdminDashboard = ({ accessToken, user }) => {
                       <td style={{ ...tdStyle, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.Description || '—'}</td>
                       <td style={tdStyle}>{c.Duration || '—'}</td>
                       <td style={tdStyle}>{c.Department || '—'}</td>
+                      <td style={tdStyle}>
+                        <button
+                          onClick={() => handleEditCourse(c)}
+                          title="Edit course"
+                          style={{
+                            background: '#0ea5e9', color: 'white', padding: '5px 12px',
+                            border: 'none', borderRadius: '6px', cursor: 'pointer',
+                            fontSize: '13px', fontWeight: '600'
+                          }}
+                        >
+                          ✏️ Edit
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
           </div>
+
+          {editingCourse && (
+            <div style={{ flex: '1', minWidth: '260px', background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', padding: '24px', border: '2px solid #0ea5e9' }}>
+              <h3 style={{ margin: '0 0 18px', color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>✏️ Edit Course</h3>
+              <form onSubmit={handleSaveEdit}>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={labelStyle}>Title *</label>
+                  <input style={inputStyle} value={editForm.Title} onChange={e => setEditForm(f => ({ ...f, Title: e.target.value }))} required placeholder="Course title" />
+                </div>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={labelStyle}>Description</label>
+                  <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: '70px' }} value={editForm.Description} onChange={e => setEditForm(f => ({ ...f, Description: e.target.value }))} placeholder="Short description" />
+                </div>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={labelStyle}>Duration</label>
+                  <input style={inputStyle} value={editForm.Duration} onChange={e => setEditForm(f => ({ ...f, Duration: e.target.value }))} placeholder="e.g. 2 hours" />
+                </div>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={labelStyle}>Department</label>
+                  <input style={inputStyle} value={editForm.Department} onChange={e => setEditForm(f => ({ ...f, Department: e.target.value }))} placeholder="e.g. Engineering" />
+                </div>
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={labelStyle}>📄 PDF / Course Materials URL</label>
+                  <input style={inputStyle} value={editForm.CourseMaterials} onChange={e => setEditForm(f => ({ ...f, CourseMaterials: e.target.value }))} placeholder="Paste SharePoint PDF link here" />
+                  <small style={{ color: '#6b7280', fontSize: '12px' }}>Upload PDF to SharePoint, copy sharing link and paste here</small>
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button type="submit" style={btnStyle} disabled={editSubmitting}>
+                    {editSubmitting ? 'Saving...' : 'Save Changes'}
+                  </button>
+                  <button type="button" onClick={() => { setEditingCourse(null); setMsg(''); }}
+                    style={{ ...btnStyle, background: '#6b7280' }}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
 
           <div style={{ flex: '1', minWidth: '260px', background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', padding: '24px' }}>
             <h3 style={{ margin: '0 0 18px', color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Add Course</h3>

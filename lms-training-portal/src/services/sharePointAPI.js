@@ -226,6 +226,26 @@ export const getCourseDetails = async (token, courseId) => {
   } catch (e) { return null; }
 };
 
+export const updateCourse = async (token, courseId, data) => {
+  try {
+    const siteId = await getSiteId(token);
+    const fields = {};
+    if (data.Title) fields.Title = data.Title;
+    if (data.Duration !== undefined) fields.Duration = data.Duration;
+    if (data.Department !== undefined) fields.Department = data.Department;
+    if (data.CourseMaterials !== undefined) fields.CourseMaterials = String(data.CourseMaterials || '');
+    if (data.Description !== undefined) fields.Description = data.Description;
+    await axios.patch(
+      `${GRAPH}/sites/${siteId}/lists/Courses/items/${courseId}`,
+      { fields },
+      h(token)
+    );
+  } catch (e) {
+    console.error('updateCourse error:', JSON.stringify(e?.response?.data));
+    throw e;
+  }
+};
+
 export const createQuizQuestion = async (token, data) => {
   try {
     const siteId = await getSiteId(token);

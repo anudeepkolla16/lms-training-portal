@@ -10,6 +10,9 @@ const Dashboard = ({ accessToken, user }) => {
   const [quizCourse, setQuizCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [readCourses, setReadCourses] = useState(new Set());
+
+  const markAsRead = (courseId) => setReadCourses(prev => new Set([...prev, courseId]));
 
   const userEmail = user.username || user.mail || user.idTokenClaims?.preferred_username || '';
   const userName = user.givenName || user.name || user.username?.split('@')[0] || 'there';
@@ -154,7 +157,7 @@ const Dashboard = ({ accessToken, user }) => {
               </div>
               <div style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
                 {e.CourseMaterials && (
-                  <button onClick={() => { setSelectedCourse(e); setShowPDF(true); }} style={{
+                  <button onClick={() => { markAsRead(e.Id); setSelectedCourse(e); setShowPDF(true); }} style={{
                     background: '#3b82f6', color: 'white', padding: '9px 16px',
                     borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
                   }}>
@@ -193,6 +196,12 @@ const Dashboard = ({ accessToken, user }) => {
                 style={{ background: '#3b82f6', color: 'white', padding: '8px 14px', borderRadius: '7px', textDecoration: 'none', fontSize: '13px', fontWeight: '600' }}>
                 ↗ Open in new tab
               </a>
+              {!readCourses.has(selectedCourse.Id) && (
+                <button onClick={() => { markAsRead(selectedCourse.Id); setShowPDF(false); }}
+                  style={{ background: '#10b981', color: 'white', padding: '8px 14px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                  ✅ I've Read It
+                </button>
+              )}
               {selectedCourse.Status !== 'Completed' && (
                 <button onClick={() => handleStartQuiz(selectedCourse)}
                   style={{ background: '#8b5cf6', color: 'white', padding: '8px 14px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
@@ -250,30 +259,44 @@ const Dashboard = ({ accessToken, user }) => {
               ))}
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              {selectedCourse.CourseMaterials && (
-                <button onClick={() => setShowPDF(true)} style={{
-                  background: '#3b82f6', color: 'white', padding: '11px 18px',
-                  borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600', flex: 1
-                }}>
-                  📖 Read Course Material
-                </button>
-              )}
-              {selectedCourse.Status !== 'Completed' && (
-                <button onClick={() => handleStartQuiz(selectedCourse)} style={{
-                  background: '#8b5cf6', color: 'white', padding: '11px 18px',
-                  borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '700', flex: 1
-                }}>
-                  🎯 Take Quiz & Complete
-                </button>
-              )}
-              <button onClick={() => setSelectedCourse(null)} style={{
-                background: '#f1f5f9', color: '#334155', padding: '11px 18px',
-                borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600', width: '100%'
-              }}>
-                Close
-              </button>
-            </div>
+            {(() => {
+              const canTakeQuiz = !selectedCourse.CourseMaterials || readCourses.has(selectedCourse.Id);
+              return (
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  {selectedCourse.CourseMaterials && (
+                    <button onClick={() => { markAsRead(selectedCourse.Id); setShowPDF(true); }} style={{
+                      background: '#3b82f6', color: 'white', padding: '11px 18px',
+                      borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600', flex: 1
+                    }}>
+                      📖 Read Course Material
+                    </button>
+                  )}
+                  {selectedCourse.Status !== 'Completed' && (
+                    canTakeQuiz ? (
+                      <button onClick={() => handleStartQuiz(selectedCourse)} style={{
+                        background: '#8b5cf6', color: 'white', padding: '11px 18px',
+                        borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '700', flex: 1
+                      }}>
+                        🎯 Take Quiz & Complete
+                      </button>
+                    ) : (
+                      <button disabled title="Read the course material first" style={{
+                        background: '#d1d5db', color: '#9ca3af', padding: '11px 18px',
+                        borderRadius: '8px', border: 'none', cursor: 'not-allowed', fontSize: '14px', fontWeight: '700', flex: 1
+                      }}>
+                        📖 Read material first to unlock quiz
+                      </button>
+                    )
+                  )}
+                  <button onClick={() => setSelectedCourse(null)} style={{
+                    background: '#f1f5f9', color: '#334155', padding: '11px 18px',
+                    borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600', width: '100%'
+                  }}>
+                    Close
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
