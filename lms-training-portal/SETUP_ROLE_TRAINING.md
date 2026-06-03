@@ -72,6 +72,19 @@ Admins set these from **Admin Dashboard → Employee Profiles**.
 
 Admins set these in the **Add / Edit Course** forms.
 
+## Manager email notifications (one Azure AD step)
+
+When an employee self-rates a course **4 or 5**, the app emails the employee's manager
+(from `ManagerEmail`) via Microsoft Graph so they know a review is waiting. For this to work:
+
+1. In **Azure AD → App registrations →** this app **→ API permissions**, add the Microsoft Graph
+   **delegated** permission **`Mail.Send`**, then **Grant admin consent**.
+2. Users will be re-prompted to consent on next sign-in (the app already requests the scope).
+
+The email is sent **from the signed-in employee's mailbox** (`/me/sendMail`). Sending is
+best-effort — if it fails, the assessment is still saved and the manager still sees it in the
+**Assessment Reviews** tab. If `Mail.Send` is not granted, only the in-app tab notification works.
+
 ## How the workflow runs
 1. **Admin** adds job-roles (Org Roles tab), tags courses with `JobRoles`/`Departments` + `Mandatory`, and fills employee profiles (`JobRole`/`Department`/`ManagerEmail`).
 2. **Employee** signs in → mandatory matching courses are auto-enrolled (idempotent). They can also **Browse All Courses** and self-enroll.

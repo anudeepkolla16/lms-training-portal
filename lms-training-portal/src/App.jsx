@@ -8,7 +8,7 @@ import ManagerDashboard from './components/ManagerDashboard';
 import { getUserProfile } from './services/sharePointAPI';
 import './App.css';
 
-const SP_SCOPES = ["https://graph.microsoft.com/Sites.ReadWrite.All"];
+const SP_SCOPES = ["https://graph.microsoft.com/Sites.ReadWrite.All", "https://graph.microsoft.com/Mail.Send"];
 
 const AppContent = () => {
   const isAuthenticated = useIsAuthenticated();

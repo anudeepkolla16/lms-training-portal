@@ -329,6 +329,31 @@ export const getAssessmentsForManager = async (token, managerEmail) => {
   }
 };
 
+// Send an email via Microsoft Graph as the signed-in user. Best-effort: never throws,
+// so a notification failure can't block the action that triggered it. Requires the
+// Mail.Send delegated scope (added to the token request in App.jsx) + Azure AD consent.
+export const sendMail = async (token, { to, subject, html }) => {
+  if (!to) return false;
+  try {
+    await axios.post(
+      `${GRAPH}/me/sendMail`,
+      {
+        message: {
+          subject,
+          body: { contentType: 'HTML', content: html },
+          toRecipients: [{ emailAddress: { address: to } }],
+        },
+        saveToSentItems: true,
+      },
+      h(token)
+    );
+    return true;
+  } catch (e) {
+    console.warn('sendMail failed (non-blocking):', e?.response?.data?.error?.message || e.message);
+    return false;
+  }
+};
+
 export const saveSelfAssessment = async (token, data) => {
   try {
     const siteId = await getSiteId(token);
