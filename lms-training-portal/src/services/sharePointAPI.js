@@ -157,6 +157,63 @@ export const getUserRole = async (token, userEmail) => {
   }
 };
 
+export const getQuizQuestions = async (token, courseTitle) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/Quiz%20Questions/items?$expand=fields&$filter=fields/CourseTitle eq '${encodeURIComponent(courseTitle)}'&$top=50`,
+      h(token)
+    );
+    return (res.data.value || []).map(mapItem);
+  } catch (e) {
+    console.warn('getQuizQuestions error:', e?.response?.data?.error?.message || e.message);
+    return [];
+  }
+};
+
+export const saveQuizResult = async (token, data) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.post(
+      `${GRAPH}/sites/${siteId}/lists/Quiz%20Results/items`,
+      { fields: { ...data, AttemptDate: new Date().toISOString() } },
+      h(token)
+    );
+    return res.data;
+  } catch (e) {
+    console.error('saveQuizResult error:', e?.response?.data || e.message);
+    throw e;
+  }
+};
+
+export const getQuizResults = async (token) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/Quiz%20Results/items?$expand=fields&$top=5000`,
+      h(token)
+    );
+    return (res.data.value || []).map(mapItem);
+  } catch (e) {
+    console.warn('getQuizResults error:', e?.response?.data?.error?.message || e.message);
+    return [];
+  }
+};
+
+export const getMyQuizResults = async (token, userEmail) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/Quiz%20Results/items?$expand=fields&$filter=fields/EmployeeID eq '${encodeURIComponent(userEmail)}'&$top=100`,
+      h(token)
+    );
+    return (res.data.value || []).map(mapItem);
+  } catch (e) {
+    console.warn('getMyQuizResults error:', e?.response?.data?.error?.message || e.message);
+    return [];
+  }
+};
+
 export const getCourseDetails = async (token, courseId) => {
   try {
     const siteId = await getSiteId(token);

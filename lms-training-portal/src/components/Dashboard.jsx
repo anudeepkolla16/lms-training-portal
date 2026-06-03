@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { getMyEnrollments, updateEnrollmentStatus } from '../services/sharePointAPI';
+import QuizModal from './QuizModal';
 
 const Dashboard = ({ accessToken, user }) => {
   const [enrollments, setEnrollments] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [showPDF, setShowPDF] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [quizCourse, setQuizCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [updating, setUpdating] = useState(false);
@@ -46,6 +49,21 @@ const Dashboard = ({ accessToken, user }) => {
     } finally {
       setUpdating(false);
     }
+  };
+
+  const handleStartQuiz = (course) => {
+    setQuizCourse(course);
+    setShowQuiz(true);
+    setShowPDF(false);
+    setSelectedCourse(null);
+  };
+
+  const handleQuizComplete = async (passed) => {
+    setShowQuiz(false);
+    if (passed && quizCourse) {
+      await handleMarkComplete(quizCourse.Id);
+    }
+    setQuizCourse(null);
   };
 
   const completedCount = enrollments.filter(e => e.Status === 'Completed').length;
@@ -180,9 +198,9 @@ const Dashboard = ({ accessToken, user }) => {
                 ↗ Open in new tab
               </a>
               {selectedCourse.Status !== 'Completed' && (
-                <button onClick={() => handleMarkComplete(selectedCourse.Id)} disabled={updating}
-                  style={{ background: '#10b981', color: 'white', padding: '8px 14px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600', opacity: updating ? 0.7 : 1 }}>
-                  {updating ? '⏳ Saving...' : '✅ Mark Complete'}
+                <button onClick={() => handleStartQuiz(selectedCourse)}
+                  style={{ background: '#8b5cf6', color: 'white', padding: '8px 14px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                  🎯 Take Quiz & Complete
                 </button>
               )}
               {selectedCourse.Status === 'Completed' && (
@@ -246,12 +264,11 @@ const Dashboard = ({ accessToken, user }) => {
                 </button>
               )}
               {selectedCourse.Status !== 'Completed' && (
-                <button onClick={() => handleMarkComplete(selectedCourse.Id)} disabled={updating} style={{
-                  background: '#10b981', color: 'white', padding: '11px 18px',
-                  borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600',
-                  flex: 1, opacity: updating ? 0.7 : 1
+                <button onClick={() => handleStartQuiz(selectedCourse)} style={{
+                  background: '#8b5cf6', color: 'white', padding: '11px 18px',
+                  borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '700', flex: 1
                 }}>
-                  {updating ? '⏳ Saving...' : '✅ Mark as Complete'}
+                  🎯 Take Quiz & Complete
                 </button>
               )}
               <button onClick={() => setSelectedCourse(null)} style={{
@@ -263,6 +280,17 @@ const Dashboard = ({ accessToken, user }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* QUIZ MODAL */}
+      {showQuiz && quizCourse && (
+        <QuizModal
+          course={quizCourse}
+          userEmail={userEmail}
+          accessToken={accessToken}
+          onClose={() => { setShowQuiz(false); setQuizCourse(null); }}
+          onComplete={handleQuizComplete}
+        />
       )}
     </div>
   );
