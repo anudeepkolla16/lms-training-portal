@@ -154,11 +154,10 @@ const AdminDashboard = ({ accessToken, user }) => {
     setMsg('');
     try {
       await enrollEmployee(accessToken, {
-        Title: enrollForm.EmployeeID,
+        Title: enrollForm.CourseTitle,
         EmployeeID: enrollForm.EmployeeID,
-        CourseTitle: enrollForm.CourseTitle,
         Department: enrollForm.Department,
-        DueDate: enrollForm.DueDate,
+        DueDate: enrollForm.DueDate ? new Date(enrollForm.DueDate).toISOString() : null,
         Status: 'Not Started'
       });
       setMsg('Employee enrolled successfully.');
