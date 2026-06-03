@@ -124,10 +124,7 @@ export const createCourse = async (token, data) => {
     const fields = { Title: data.Title };
     if (data.Duration) fields.Duration = data.Duration;
     if (data.Department) fields.Department = data.Department;
-    if (data.CourseMaterials) {
-      // Hyperlink columns in Graph API need {Url, Description} format
-      fields.CourseMaterials = { Url: String(data.CourseMaterials), Description: 'Course Materials' };
-    }
+    if (data.CourseMaterials) fields.CourseMaterials = String(data.CourseMaterials);
     if (data.Description) fields.CourseDescription = data.Description;
 
     const res = await axios.post(
