@@ -354,6 +354,53 @@ export const sendMail = async (token, { to, subject, html }) => {
   }
 };
 
+const PORTAL_URL = () => (typeof window !== 'undefined' ? window.location.origin : '');
+
+// Email an employee that a course was assigned to them (best-effort).
+export const notifyCourseAssigned = async (token, to, courseTitle, dueDate) => {
+  if (!to) return false;
+  const due = dueDate ? new Date(dueDate).toLocaleDateString() : null;
+  const portal = PORTAL_URL();
+  return sendMail(token, {
+    to,
+    subject: `New training assigned: ${courseTitle}`,
+    html: `<p>Hi,</p>
+      <p>You have been assigned the training <strong>${courseTitle}</strong>${due ? ` (due <strong>${due}</strong>)` : ''}.</p>
+      <p>Please complete it in the Training Portal.</p>
+      ${portal ? `<p><a href="${portal}">Open Training Portal</a></p>` : ''}
+      <p>— Training Portal</p>`,
+  });
+};
+
+// Send one reminder email per employee listing their incomplete courses (overdue flagged).
+// Returns { sent, employees }. Best-effort per email.
+export const sendCompletionReminders = async (token, enrollments) => {
+  const today = new Date();
+  const pending = (enrollments || []).filter(e => e.Status !== 'Completed' && e.EmployeeID);
+  const byEmp = {};
+  pending.forEach(e => { (byEmp[e.EmployeeID] = byEmp[e.EmployeeID] || []).push(e); });
+  const portal = PORTAL_URL();
+  let sent = 0;
+  for (const [email, items] of Object.entries(byEmp)) {
+    const list = items.map(e => {
+      const overdue = e.DueDate && new Date(e.DueDate) < today;
+      const due = e.DueDate ? new Date(e.DueDate).toLocaleDateString() : 'no due date';
+      return `<li><strong>${e.Title || e.CourseTitle || 'Course'}</strong> — ${e.Status || 'Not Started'} (due ${due}${overdue ? ' — <span style="color:#b91c1c;font-weight:bold">OVERDUE</span>' : ''})</li>`;
+    }).join('');
+    const ok = await sendMail(token, {
+      to: email,
+      subject: `Reminder: ${items.length} training${items.length > 1 ? 's' : ''} pending completion`,
+      html: `<p>Hi,</p>
+        <p>This is a friendly reminder to complete your assigned training:</p>
+        <ul>${list}</ul>
+        ${portal ? `<p><a href="${portal}">Open Training Portal</a></p>` : ''}
+        <p>— Training Portal</p>`,
+    });
+    if (ok) sent++;
+  }
+  return { sent, employees: Object.keys(byEmp).length };
+};
+
 export const saveSelfAssessment = async (token, data) => {
   try {
     const siteId = await getSiteId(token);
@@ -397,6 +444,7 @@ export const autoAssignMandatory = async (token, email, profile, courses, existi
         Department: profile.department || c.Department || '',
         Status: 'Not Started',
       });
+      notifyCourseAssigned(token, email, c.Title, null); // best-effort, non-blocking
       created++;
     } catch (e) { /* logged in enrollEmployee */ }
   }

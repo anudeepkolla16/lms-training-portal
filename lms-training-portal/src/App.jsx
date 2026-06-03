@@ -106,17 +106,21 @@ const AppContent = () => {
     ? 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)'
     : userRole === 'Manager'
       ? 'linear-gradient(135deg, #f59e0b 0%, #fb923c 100%)'
-      : userRole === 'Admin'
-        ? 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)'
-        : 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+      : userRole === 'HOD'
+        ? 'linear-gradient(135deg, #0d9488 0%, #0891b2 100%)'
+        : userRole === 'Admin'
+          ? 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)'
+          : 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
 
   const roleAccentColor = userRole === 'HR'
     ? '#8b5cf6'
     : userRole === 'Manager'
       ? '#f59e0b'
-      : userRole === 'Admin'
-        ? '#0ea5e9'
-        : '#10b981';
+      : userRole === 'HOD'
+        ? '#0d9488'
+        : userRole === 'Admin'
+          ? '#0ea5e9'
+          : '#10b981';
 
   const renderDashboard = () => {
     if (showMyTraining || userRole === 'Employee') {
@@ -125,7 +129,8 @@ const AppContent = () => {
     switch (userRole) {
       case 'Admin': return <AdminDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
       case 'HR': return <HRDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
-      case 'Manager': return <ManagerDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
+      case 'Manager': return <ManagerDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} scope="reports" />;
+      case 'HOD': return <ManagerDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} scope="department" />;
       default: return <Dashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
     }
   };

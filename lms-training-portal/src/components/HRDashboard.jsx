@@ -1,5 +1,5 @@
 import React from 'react';
-import { getAllEnrollments, getQuizResults } from '../services/sharePointAPI';
+import { getAllEnrollments, getQuizResults, sendCompletionReminders } from '../services/sharePointAPI';
 import { downloadCSV } from '../utils/csv';
 
 const thStyle = {
@@ -89,6 +89,8 @@ const HRDashboard = ({ accessToken, user }) => {
   const [quizResults, setQuizResults] = React.useState([]);
   const [quizLoaded, setQuizLoaded] = React.useState(false);
   const [dept, setDept] = React.useState('');
+  const [reminding, setReminding] = React.useState(false);
+  const [reminderMsg, setReminderMsg] = React.useState('');
   const today = new Date();
 
   React.useEffect(() => {
@@ -179,11 +181,25 @@ const HRDashboard = ({ accessToken, user }) => {
             <option value="">All departments</option>
             {departmentOptions.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
+          <button onClick={async () => {
+            const pending = filteredEnrollments.filter(e => e.Status !== 'Completed' && e.EmployeeID);
+            const employees = new Set(pending.map(e => e.EmployeeID)).size;
+            if (employees === 0) { setReminderMsg('No employees with pending courses to remind.'); return; }
+            if (!window.confirm(`Send completion-reminder emails to ${employees} employee(s) with pending courses?`)) return;
+            setReminding(true); setReminderMsg('');
+            const { sent } = await sendCompletionReminders(accessToken, filteredEnrollments);
+            setReminding(false); setReminderMsg(`Reminder emails sent to ${sent} of ${employees} employee(s).`);
+          }} disabled={reminding} style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '7px', cursor: reminding ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '14px', opacity: reminding ? 0.7 : 1 }}>
+            {reminding ? 'Sending...' : '📧 Send Reminders'}
+          </button>
           <button onClick={exportCSV} style={{ ...btnStyle, display: 'flex', alignItems: 'center', gap: '7px' }}>
             ⬇ Export CSV
           </button>
         </div>
       </div>
+      {reminderMsg && (
+        <div style={{ background: '#fffbeb', color: '#92400e', padding: '10px 16px', borderRadius: '8px', marginBottom: '18px', fontSize: '14px', fontWeight: '500' }}>{reminderMsg}</div>
+      )}
 
       {/* Stat Cards */}
       <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '28px' }}>

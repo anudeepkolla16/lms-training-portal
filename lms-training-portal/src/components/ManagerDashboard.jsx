@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, getQuizResults, getAssessmentsForManager, updateAssessment } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, getQuizResults, getAssessmentsForManager, updateAssessment, notifyCourseAssigned, sendCompletionReminders, getAllUserProfiles, getAllSelfAssessments } from '../services/sharePointAPI';
 import { downloadCSV } from '../utils/csv';
 
 
@@ -72,9 +72,11 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const ManagerDashboard = ({ accessToken, user, userProfile }) => {
+const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' }) => {
+  const isHOD = scope === 'department';
   const [courses, setCourses] = React.useState([]);
   const [enrollments, setEnrollments] = React.useState([]);
+  const [profiles, setProfiles] = React.useState([]);
   const [activeTab, setActiveTab] = React.useState('team');
   const [loading, setLoading] = React.useState(true);
   const [msg, setMsg] = React.useState('');
@@ -85,12 +87,36 @@ const ManagerDashboard = ({ accessToken, user, userProfile }) => {
   const [reviews, setReviews] = React.useState([]);
   const [reviewEdits, setReviewEdits] = React.useState({});
   const [dept, setDept] = React.useState('');
+  const [reminding, setReminding] = React.useState(false);
   const today = new Date();
 
+  const myEmail = (user?.username || '').toLowerCase();
+  const myDept = (userProfile?.department || '').toLowerCase();
+
+  // Employees this dashboard covers: HOD = whole department, Manager = direct reports.
+  const scopedEmails = React.useMemo(() => {
+    const s = new Set();
+    profiles.forEach(p => {
+      const email = (p.Title || '').toLowerCase();
+      if (!email) return;
+      if (isHOD) { if (myDept && (p.Department || '').toLowerCase() === myDept) s.add(email); }
+      else if (myEmail && (p.ManagerEmail || '').toLowerCase() === myEmail) s.add(email);
+    });
+    return s;
+  }, [profiles, isHOD, myEmail, myDept]);
+
+  const inScope = (e) => scopedEmails.has((e.EmployeeID || '').toLowerCase()) || (isHOD && myDept && (e.Department || '').toLowerCase() === myDept);
+
   const loadReviews = React.useCallback(async () => {
-    const r = await getAssessmentsForManager(accessToken, user?.username || '');
-    setReviews(r);
-  }, [accessToken, user]);
+    if (isHOD) {
+      const all = await getAllSelfAssessments(accessToken);
+      const deptEmails = new Set(profiles.filter(p => myDept && (p.Department || '').toLowerCase() === myDept).map(p => (p.Title || '').toLowerCase()));
+      setReviews(all.filter(a => a.AssessmentState === 'PendingManagerReview' && deptEmails.has((a.EmployeeID || '').toLowerCase())));
+    } else {
+      const r = await getAssessmentsForManager(accessToken, user?.username || '');
+      setReviews(r);
+    }
+  }, [accessToken, user, isHOD, profiles, myDept]);
 
   React.useEffect(() => { loadReviews(); }, [loadReviews]);
 
@@ -115,9 +141,10 @@ const ManagerDashboard = ({ accessToken, user, userProfile }) => {
   React.useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const [c, e] = await Promise.all([getCourses(accessToken), getAllEnrollments(accessToken)]);
+      const [c, e, p] = await Promise.all([getCourses(accessToken), getAllEnrollments(accessToken), getAllUserProfiles(accessToken)]);
       setCourses(c);
       setEnrollments(e);
+      setProfiles(p);
       setLoading(false);
     };
     load();
@@ -133,16 +160,18 @@ const ManagerDashboard = ({ accessToken, user, userProfile }) => {
     }
   }, [loading, quizLoaded, accessToken]);
 
-  const completedCount = enrollments.filter(e => e.Status === 'Completed').length;
-  const overdueCount = enrollments.filter(e => e.DueDate && new Date(e.DueDate) < today && e.Status !== 'Completed').length;
-  const uniqueEmployees = [...new Set(enrollments.map(e => e.EmployeeID).filter(Boolean))];
-  const teamCompletionRate = enrollments.length > 0
-    ? Math.round((completedCount / enrollments.length) * 100)
+  // Scope enrollments to this dashboard's employees, then apply the department dropdown
+  const scopedEnrollments = enrollments.filter(inScope);
+  const completedCount = scopedEnrollments.filter(e => e.Status === 'Completed').length;
+  const overdueCount = scopedEnrollments.filter(e => e.DueDate && new Date(e.DueDate) < today && e.Status !== 'Completed').length;
+  const uniqueEmployees = [...new Set(scopedEnrollments.map(e => e.EmployeeID).filter(Boolean))];
+  const teamCompletionRate = scopedEnrollments.length > 0
+    ? Math.round((completedCount / scopedEnrollments.length) * 100)
     : 0;
 
   // Department filter (applies to Team Progress grid + export)
-  const departmentOptions = [...new Set(enrollments.map(e => e.Department).filter(Boolean))].sort();
-  const filteredEnrollments = dept ? enrollments.filter(e => e.Department === dept) : enrollments;
+  const departmentOptions = [...new Set(scopedEnrollments.map(e => e.Department).filter(Boolean))].sort();
+  const filteredEnrollments = dept ? scopedEnrollments.filter(e => e.Department === dept) : scopedEnrollments;
 
   // Build per-employee profile
   const employeeMap = {};
@@ -153,10 +182,22 @@ const ManagerDashboard = ({ accessToken, user, userProfile }) => {
   });
 
   const exportTeam = () => downloadCSV(
-    `team-progress-${new Date().toISOString().slice(0, 10)}.csv`,
+    `${isHOD ? 'department' : 'team'}-progress-${new Date().toISOString().slice(0, 10)}.csv`,
     ['Employee', 'Course', 'Department', 'Status', 'Due Date'],
     filteredEnrollments.map(e => [e.EmployeeID || '', e.Title || e.CourseTitle || '', e.Department || '', e.Status || 'Not Started', e.DueDate ? new Date(e.DueDate).toLocaleDateString() : ''])
   );
+
+  const handleSendReminders = async () => {
+    const pending = filteredEnrollments.filter(e => e.Status !== 'Completed' && e.EmployeeID);
+    const employees = new Set(pending.map(e => e.EmployeeID)).size;
+    if (employees === 0) { setMsg('No employees with pending courses to remind.'); return; }
+    if (!window.confirm(`Send completion-reminder emails to ${employees} employee(s) with pending courses?`)) return;
+    setReminding(true);
+    setMsg('');
+    const { sent } = await sendCompletionReminders(accessToken, filteredEnrollments);
+    setReminding(false);
+    setMsg(`Reminder emails sent to ${sent} of ${employees} employee(s).`);
+  };
 
   const handleAssign = async (ev) => {
     ev.preventDefault();
@@ -170,7 +211,8 @@ const ManagerDashboard = ({ accessToken, user, userProfile }) => {
         DueDate: assignForm.DueDate ? new Date(assignForm.DueDate).toISOString() : null,
         Status: 'Not Started'
       });
-      setMsg('Course assigned successfully.');
+      notifyCourseAssigned(accessToken, assignForm.EmployeeEmail, assignForm.CourseTitle, assignForm.DueDate); // best-effort
+      setMsg('Course assigned successfully. Notification email sent.');
       setAssignForm({ EmployeeEmail: '', CourseTitle: '', Department: '', DueDate: '' });
       const e = await getAllEnrollments(accessToken);
       setEnrollments(e);
@@ -181,7 +223,7 @@ const ManagerDashboard = ({ accessToken, user, userProfile }) => {
   };
 
   const tabs = [
-    { id: 'team', label: 'Team Progress' },
+    { id: 'team', label: isHOD ? 'Department Progress' : 'Team Progress' },
     { id: 'assign', label: 'Assign Course' },
     { id: 'reviews', label: `Assessment Reviews${reviews.length ? ` (${reviews.length})` : ''}` }
   ];
@@ -195,13 +237,18 @@ const ManagerDashboard = ({ accessToken, user, userProfile }) => {
   return (
     <div style={{ padding: '28px', background: '#f8fafc', minHeight: '100vh' }}>
       <div style={{ marginBottom: '24px' }}>
-        <h2 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '22px', fontWeight: '700' }}>Manager Dashboard</h2>
-        <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Welcome, {user?.name || user?.username}</p>
+        <h2 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '22px', fontWeight: '700' }}>{isHOD ? 'HOD Dashboard' : 'Manager Dashboard'}</h2>
+        <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
+          Welcome, {user?.name || user?.username}
+          {isHOD
+            ? (userProfile?.department ? ` · ${userProfile.department} department` : '')
+            : ' · your direct reports'}
+        </p>
       </div>
 
       {/* Stat Cards */}
       <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '28px' }}>
-        <StatCard label="Team Members" value={uniqueEmployees.length} icon="👥" color={ACCENT} />
+        <StatCard label={isHOD ? 'Dept Members' : 'Team Members'} value={uniqueEmployees.length} icon="👥" color={ACCENT} />
         <StatCard label="Total Enrollments" value={enrollments.length} icon="📋" color="#fb923c" />
         <StatCard label="Completed" value={completedCount} icon="✅" color="#10b981" />
         <StatCard label="Overdue" value={overdueCount} icon="⚠️" color="#ef4444" />
@@ -254,6 +301,10 @@ const ManagerDashboard = ({ accessToken, user, userProfile }) => {
               <option value="">All departments</option>
               {departmentOptions.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
+            <button onClick={handleSendReminders} disabled={reminding} style={{
+              background: '#f59e0b', color: 'white', border: 'none', padding: '8px 14px',
+              borderRadius: '7px', cursor: reminding ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '600', opacity: reminding ? 0.7 : 1
+            }}>{reminding ? 'Sending...' : '📧 Send Reminders'}</button>
             <button onClick={exportTeam} style={{
               background: 'white', color: ACCENT, border: `1px solid ${ACCENT}`, padding: '8px 14px',
               borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
