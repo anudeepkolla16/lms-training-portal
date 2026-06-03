@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getMyEnrollments, updateEnrollmentStatus } from '../services/sharePointAPI';
+import { getMyEnrollments, getCourses, updateEnrollmentStatus } from '../services/sharePointAPI';
 import QuizModal from './QuizModal';
 
 const Dashboard = ({ accessToken, user }) => {
@@ -22,8 +22,16 @@ const Dashboard = ({ accessToken, user }) => {
       setLoading(true);
       setError(null);
       try {
-        const data = await getMyEnrollments(accessToken, userEmail);
-        setEnrollments(data);
+        const [enrollData, courseData] = await Promise.all([
+          getMyEnrollments(accessToken, userEmail),
+          getCourses(accessToken)
+        ]);
+        // Merge CourseMaterials and Duration from Courses list into enrollment records
+        const merged = enrollData.map(e => {
+          const match = courseData.find(c => c.Title?.toLowerCase() === e.Title?.toLowerCase());
+          return match ? { ...e, CourseMaterials: e.CourseMaterials || match.CourseMaterials, Duration: e.Duration || match.Duration } : e;
+        });
+        setEnrollments(merged);
       } catch (err) {
         setError('Failed to load courses. Please try again.');
       } finally {
@@ -35,8 +43,15 @@ const Dashboard = ({ accessToken, user }) => {
 
   const reload = async () => {
     try {
-      const data = await getMyEnrollments(accessToken, userEmail);
-      setEnrollments(data);
+      const [enrollData, courseData] = await Promise.all([
+        getMyEnrollments(accessToken, userEmail),
+        getCourses(accessToken)
+      ]);
+      const merged = enrollData.map(e => {
+        const match = courseData.find(c => c.Title?.toLowerCase() === e.Title?.toLowerCase());
+        return match ? { ...e, CourseMaterials: e.CourseMaterials || match.CourseMaterials, Duration: e.Duration || match.Duration } : e;
+      });
+      setEnrollments(merged);
     } catch (err) { console.error(err); }
   };
 
