@@ -120,13 +120,12 @@ export const enrollEmployee = async (token, data) => {
 export const createCourse = async (token, data) => {
   try {
     const siteId = await getSiteId(token);
-    // Only send safe fields - Description conflicts with SharePoint built-in
+    // Only send fields that exist in SharePoint list
     const fields = { Title: data.Title };
     if (data.Duration) fields.Duration = data.Duration;
     if (data.Department) fields.Department = data.Department;
     if (data.CourseMaterials) fields.CourseMaterials = String(data.CourseMaterials);
-    // Use CourseDescription to avoid conflict with built-in Description field
-    if (data.Description) fields.CourseDescription = data.Description;
+    // Note: Skip Description - can cause conflicts with SharePoint built-in fields
 
     const res = await axios.post(
       `${GRAPH}/sites/${siteId}/lists/Courses/items`,
