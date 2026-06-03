@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults, getOrgRoles, createOrgRole, deleteOrgRole, getAllUserProfiles, upsertUserProfile } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults, getOrgRoles, createOrgRole, deleteOrgRole, getAllUserProfiles, upsertUserProfile, notifyCourseAssigned, sendCompletionReminders } from '../services/sharePointAPI';
 import { downloadCSV } from '../utils/csv';
 import BulkUpload from './BulkUpload';
 
@@ -136,6 +136,7 @@ const AdminDashboard = ({ accessToken, user }) => {
   const [enrollDept, setEnrollDept] = React.useState('');
   const [profileDept, setProfileDept] = React.useState('');
   const [courseDept, setCourseDept] = React.useState('');
+  const [reminding, setReminding] = React.useState(false);
 
   // Quiz state
   const [quizForm, setQuizForm] = React.useState({ CourseTitle: '', Question: '', OptionA: '', OptionB: '', OptionC: '', OptionD: '', CorrectAnswer: 'A' });
@@ -202,6 +203,18 @@ const AdminDashboard = ({ accessToken, user }) => {
       return [r.EmployeeID || r.Employee || '', r.CourseTitle || r.Title || '', score, total, `${pct}%`, passed ? 'Pass' : 'Fail', r.AttemptDate ? new Date(r.AttemptDate).toLocaleDateString() : ''];
     })
   );
+
+  const handleSendReminders = async () => {
+    const pending = filteredEnrollments.filter(e => e.Status !== 'Completed' && e.EmployeeID);
+    const employees = new Set(pending.map(e => e.EmployeeID)).size;
+    if (employees === 0) { setMsg('No employees with pending courses to remind.'); return; }
+    if (!window.confirm(`Send completion-reminder emails to ${employees} employee(s) with pending courses?`)) return;
+    setReminding(true);
+    setMsg('');
+    const { sent } = await sendCompletionReminders(accessToken, filteredEnrollments);
+    setReminding(false);
+    setMsg(`Reminder emails sent to ${sent} of ${employees} employee(s).`);
+  };
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
@@ -336,7 +349,8 @@ const AdminDashboard = ({ accessToken, user }) => {
         DueDate: enrollForm.DueDate ? new Date(enrollForm.DueDate).toISOString() : null,
         Status: 'Not Started'
       });
-      setMsg('Employee enrolled successfully.');
+      notifyCourseAssigned(accessToken, enrollForm.EmployeeID, enrollForm.CourseTitle, enrollForm.DueDate); // best-effort
+      setMsg('Employee enrolled successfully. Notification email sent.');
       setEnrollForm({ EmployeeID: '', CourseTitle: '', Department: '', DueDate: '' });
       const e = await getAllEnrollments(accessToken);
       setEnrollments(e);
@@ -650,6 +664,9 @@ const AdminDashboard = ({ accessToken, user }) => {
             <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>All Enrollments ({filteredEnrollments.length})</h3>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <DeptFilter value={enrollDept} onChange={setEnrollDept} departments={enrollDepartments} />
+              <button onClick={handleSendReminders} disabled={reminding} style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '7px', cursor: reminding ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '600', opacity: reminding ? 0.7 : 1 }}>
+                {reminding ? 'Sending...' : '📧 Send Reminders'}
+              </button>
               <button onClick={exportEnrollments} style={exportBtn(ACCENT)}>⬇ Export CSV</button>
             </div>
           </div>
@@ -788,7 +805,7 @@ const AdminDashboard = ({ accessToken, user }) => {
             <div style={{ flex: '1', minWidth: '120px' }}>
               <label style={labelStyle}>Access Role</label>
               <select style={inputStyle} value={newEmployee.Role} onChange={e => setNewEmployee(f => ({ ...f, Role: e.target.value }))}>
-                {['Employee', 'Manager', 'HR', 'Admin'].map(r => <option key={r} value={r}>{r}</option>)}
+                {['Employee', 'Manager', 'HOD', 'HR', 'Admin'].map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
             <div style={{ flex: '1', minWidth: '140px' }}>
@@ -846,7 +863,11 @@ const AdminDashboard = ({ accessToken, user }) => {
                   return (
                     <tr key={p.Id}>
                       <td style={tdStyle}><strong>{(email || '').split('@')[0]}</strong><div style={{ color: '#9ca3af', fontSize: '11px' }}>{email}</div></td>
-                      <td style={tdStyle}>{p.Role || 'Employee'}</td>
+                      <td style={tdStyle}>
+                        <select style={{ ...inputStyle, minWidth: '110px' }} value={val('Role', p.Role || 'Employee')} onChange={e => setEdit('Role', e.target.value)}>
+                          {['Employee', 'Manager', 'HOD', 'HR', 'Admin'].map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                      </td>
                       <td style={tdStyle}>
                         <input style={{ ...inputStyle, minWidth: '140px' }} list="orgRoleSuggestions2" value={val('JobRole', p.JobRole || '')} onChange={e => setEdit('JobRole', e.target.value)} placeholder="Job-role" />
                       </td>

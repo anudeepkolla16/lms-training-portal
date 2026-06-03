@@ -72,6 +72,26 @@ Admins set these from **Admin Dashboard → Employee Profiles**.
 
 Admins set these in the **Add / Edit Course** forms.
 
+## Access roles & dashboard scoping
+
+`Role` (on the `UserRoles` list) controls which dashboard a user sees and what data it shows:
+
+| Role | Dashboard | Data shown |
+|---|---|---|
+| Employee | My Training | Their own courses |
+| **Manager** | Manager Dashboard | **Only their direct reports** — employees whose `ManagerEmail` = the manager's email. Set `ManagerEmail` on each report's profile, or the manager sees no one. |
+| **HOD** *(new)* | HOD Dashboard | **Their whole department** — employees whose `Department` matches the HOD's `Department`. |
+| HR | HR Analytics | Whole organisation |
+| Admin | Admin | Everything + management |
+
+Set roles in **Admin → Employee Profiles** (the Access Role column is now an editable dropdown including **HOD**).
+
+## Email triggers (all use the `Mail.Send` consent below)
+
+- **Course assigned** → emails the employee when an Admin/Manager assigns a course, or when a Mandatory course is auto-assigned on login (not on self-enrol).
+- **Pending review** → emails the manager when an employee self-rates ≥ 4.
+- **Completion reminders** → the **📧 Send Reminders** button (Admin / HR / Manager / HOD) emails each in-scope employee a list of their incomplete/overdue courses, on demand.
+
 ## Manager email notifications (one Azure AD step)
 
 When an employee self-rates a course **4 or 5**, the app emails the employee's manager
