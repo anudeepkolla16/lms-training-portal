@@ -55,14 +55,16 @@ const MOCK_ROLES = {
 export const getMyEnrollments = async (token, userEmail) => {
   try {
     const siteId = await getSiteId(token);
+    // Encode the email to handle special characters (e.g. apostrophes) safely
+    const encodedEmail = encodeURIComponent(userEmail).replace(/'/g, "''");
     const res = await axios.get(
-      `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items?$expand=fields&$filter=fields/EmployeeID eq '${userEmail}'&$top=1000`,
+      `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items?$expand=fields&$filter=fields/EmployeeID eq '${encodedEmail}'&$top=1000`,
       h(token)
     );
-    return (res.data.value || []).map(mapItem);
+    return (res.data?.value || res.d?.results || []).map(mapItem);
   } catch (e) {
     console.warn('getMyEnrollments fallback:', e?.response?.data?.error?.message || e.message);
-    return MOCK_ENROLLMENTS.filter(x => x.EmployeeID?.toLowerCase() === userEmail.toLowerCase());
+    return MOCK_ENROLLMENTS.filter(x => x.EmployeeID?.toLowerCase() === (userEmail || '').toLowerCase());
   }
 };
 

@@ -94,7 +94,7 @@ const ManagerDashboard = ({ accessToken, user }) => {
 
   const completedCount = enrollments.filter(e => e.Status === 'Completed').length;
   const overdueCount = enrollments.filter(e => e.DueDate && new Date(e.DueDate) < today && e.Status !== 'Completed').length;
-  const uniqueEmployees = [...new Set(enrollments.map(e => e.EmployeeID || e.Title).filter(Boolean))];
+  const uniqueEmployees = [...new Set(enrollments.map(e => e.EmployeeID).filter(Boolean))];
   const teamCompletionRate = enrollments.length > 0
     ? Math.round((completedCount / enrollments.length) * 100)
     : 0;
@@ -102,7 +102,7 @@ const ManagerDashboard = ({ accessToken, user }) => {
   // Build per-employee profile
   const employeeMap = {};
   enrollments.forEach(e => {
-    const email = e.EmployeeID || e.Title || 'Unknown';
+    const email = e.EmployeeID || 'Unknown';
     if (!employeeMap[email]) employeeMap[email] = { enrollments: [] };
     employeeMap[email].enrollments.push(e);
   });
@@ -113,11 +113,10 @@ const ManagerDashboard = ({ accessToken, user }) => {
     setMsg('');
     try {
       await enrollEmployee(accessToken, {
-        Title: assignForm.EmployeeEmail,
+        Title: assignForm.CourseTitle,
         EmployeeID: assignForm.EmployeeEmail,
-        CourseTitle: assignForm.CourseTitle,
         Department: assignForm.Department,
-        DueDate: assignForm.DueDate,
+        DueDate: assignForm.DueDate ? new Date(assignForm.DueDate).toISOString() : null,
         Status: 'Not Started'
       });
       setMsg('Course assigned successfully.');
@@ -235,7 +234,7 @@ const ManagerDashboard = ({ accessToken, user }) => {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {data.enrollments.map(e => (
                         <div key={e.Id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#f8fafc', borderRadius: '7px' }}>
-                          <span style={{ fontSize: '12px', color: '#374151', fontWeight: '500' }}>{e.CourseTitle || 'Unknown Course'}</span>
+                          <span style={{ fontSize: '12px', color: '#374151', fontWeight: '500' }}>{e.Title || e.CourseTitle || 'Unknown Course'}</span>
                           <StatusBadge status={e.Status} />
                         </div>
                       ))}

@@ -9,12 +9,14 @@ const Dashboard = ({ accessToken, user }) => {
   const [error, setError] = useState(null);
   const [updating, setUpdating] = useState(false);
 
+  const userEmail = user.username || user.mail || user.idTokenClaims?.preferred_username || '';
+
   useEffect(() => {
     const fetchEnrollments = async () => {
       setLoading(true);
       setError(null);
       try {
-        const data = await getMyEnrollments(accessToken, user.mail);
+        const data = await getMyEnrollments(accessToken, userEmail);
         setEnrollments(data);
       } catch (err) {
         setError('Failed to load enrollments. Please try again.');
@@ -24,13 +26,13 @@ const Dashboard = ({ accessToken, user }) => {
       }
     };
     fetchEnrollments();
-  }, [accessToken, user.mail]);
+  }, [accessToken, userEmail]);
 
   const loadEnrollments = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getMyEnrollments(accessToken, user.mail);
+      const data = await getMyEnrollments(accessToken, userEmail);
       setEnrollments(data);
     } catch (err) {
       setError('Failed to load enrollments. Please try again.');

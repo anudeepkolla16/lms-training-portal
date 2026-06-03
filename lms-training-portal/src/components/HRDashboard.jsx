@@ -97,7 +97,7 @@ const HRDashboard = ({ accessToken, user }) => {
     load();
   }, [accessToken]);
 
-  const uniqueEmployees = new Set(enrollments.map(e => e.EmployeeID || e.Title)).size;
+  const uniqueEmployees = new Set(enrollments.map(e => e.EmployeeID).filter(Boolean)).size;
   const completedCount = enrollments.filter(e => e.Status === 'Completed').length;
   const overdueList = enrollments.filter(e => e.DueDate && new Date(e.DueDate) < today && e.Status !== 'Completed');
   const departments = new Set(enrollments.map(e => e.Department).filter(Boolean)).size;
@@ -118,8 +118,8 @@ const HRDashboard = ({ accessToken, user }) => {
   const exportCSV = () => {
     const headers = ['Employee', 'Course', 'Department', 'Status', 'Due Date'];
     const rows = enrollments.map(e => [
-      e.EmployeeID || e.Title || '',
-      e.CourseTitle || '',
+      e.EmployeeID || '',
+      e.Title || e.CourseTitle || '',
       e.Department || '',
       e.Status || 'Not Started',
       e.DueDate ? new Date(e.DueDate).toLocaleDateString() : ''
@@ -255,8 +255,8 @@ const HRDashboard = ({ accessToken, user }) => {
                     const daysOverdue = Math.floor((today - new Date(e.DueDate)) / (1000 * 60 * 60 * 24));
                     return (
                       <tr key={e.Id} style={{ background: '#fff9f9' }}>
-                        <td style={tdStyle}>{e.EmployeeID || e.Title || '—'}</td>
-                        <td style={tdStyle}>{e.CourseTitle || '—'}</td>
+                        <td style={tdStyle}>{e.EmployeeID || '—'}</td>
+                        <td style={tdStyle}>{e.Title || e.CourseTitle || '—'}</td>
                         <td style={tdStyle}>{e.Department || '—'}</td>
                         <td style={tdStyle}><StatusBadge status={e.Status} /></td>
                         <td style={tdStyle}>{new Date(e.DueDate).toLocaleDateString()}</td>
@@ -294,8 +294,8 @@ const HRDashboard = ({ accessToken, user }) => {
                 ) : (
                   enrollments.map(e => (
                     <tr key={e.Id}>
-                      <td style={tdStyle}>{e.EmployeeID || e.Title || '—'}</td>
-                      <td style={tdStyle}>{e.CourseTitle || '—'}</td>
+                      <td style={tdStyle}>{e.EmployeeID || '—'}</td>
+                      <td style={tdStyle}>{e.Title || e.CourseTitle || '—'}</td>
                       <td style={tdStyle}>{e.Department || '—'}</td>
                       <td style={tdStyle}><StatusBadge status={e.Status} /></td>
                       <td style={tdStyle}>{e.DueDate ? new Date(e.DueDate).toLocaleDateString() : '—'}</td>
