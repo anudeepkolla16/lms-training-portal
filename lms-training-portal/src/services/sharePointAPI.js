@@ -137,6 +137,16 @@ export const updateEnrollmentStatus = async (token, enrollmentId, status) => {
   } catch (e) { console.error('updateEnrollmentStatus error:', e?.response?.data || e.message); throw e; }
 };
 
+export const deleteEnrollment = async (token, enrollmentId) => {
+  try {
+    const siteId = await getSiteId(token);
+    await axios.delete(
+      `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items/${enrollmentId}`,
+      h(token)
+    );
+  } catch (e) { console.error('deleteEnrollment error:', e?.response?.data || e.message); throw e; }
+};
+
 export const enrollEmployee = async (token, data) => {
   try {
     const siteId = await getSiteId(token);
