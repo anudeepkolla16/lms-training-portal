@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults, getOrgRoles, createOrgRole, deleteOrgRole, getAllUserProfiles, upsertUserProfile, notifyCourseAssigned, sendCompletionReminders } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults, getOrgRoles, createOrgRole, deleteOrgRole, getAllUserProfiles, upsertUserProfile, notifyCourseAssigned, sendCompletionReminders, deleteEnrollment } from '../services/sharePointAPI';
 import { downloadCSV } from '../utils/csv';
 import BulkUpload from './BulkUpload';
 
@@ -203,6 +203,18 @@ const AdminDashboard = ({ accessToken, user }) => {
       return [r.EmployeeID || r.Employee || '', r.CourseTitle || r.Title || '', score, total, `${pct}%`, passed ? 'Pass' : 'Fail', r.AttemptDate ? new Date(r.AttemptDate).toLocaleDateString() : ''];
     })
   );
+
+  const handleDeleteEnrollment = async (enr) => {
+    if (!window.confirm(`Remove enrollment "${enr.Title || enr.CourseTitle}" for ${enr.EmployeeID || 'this employee'}? This cannot be undone.`)) return;
+    setMsg('');
+    try {
+      await deleteEnrollment(accessToken, enr.Id);
+      setEnrollments(await getAllEnrollments(accessToken));
+      setMsg('Enrollment removed.');
+    } catch {
+      setMsg('Error removing enrollment. Please try again.');
+    }
+  };
 
   const handleSendReminders = async () => {
     const pending = filteredEnrollments.filter(e => e.Status !== 'Completed' && e.EmployeeID);
@@ -674,14 +686,14 @@ const AdminDashboard = ({ accessToken, user }) => {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Employee', 'Course', 'Department', 'Status', 'Due Date'].map(h => (
+                  {['Employee', 'Course', 'Department', 'Status', 'Due Date', 'Actions'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filteredEnrollments.length === 0 ? (
-                  <tr><td colSpan={5} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No enrollments found.</td></tr>
+                  <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No enrollments found.</td></tr>
                 ) : (
                   filteredEnrollments.map(e => (
                     <tr key={e.Id}>
@@ -690,6 +702,12 @@ const AdminDashboard = ({ accessToken, user }) => {
                       <td style={tdStyle}>{e.Department || '—'}</td>
                       <td style={tdStyle}><StatusBadge status={e.Status} /></td>
                       <td style={tdStyle}>{e.DueDate ? new Date(e.DueDate).toLocaleDateString() : '—'}</td>
+                      <td style={tdStyle}>
+                        <button onClick={() => handleDeleteEnrollment(e)} title="Remove enrollment" style={{
+                          background: '#fee2e2', color: '#991b1b', border: 'none', padding: '5px 12px',
+                          borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
+                        }}>🗑 Remove</button>
+                      </td>
                     </tr>
                   ))
                 )}
