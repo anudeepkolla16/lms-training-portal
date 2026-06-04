@@ -69,7 +69,9 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
   };
 
   const assessmentFor = (title) => {
-    const matches = assessments.filter(a => (a.Title || '').toLowerCase() === (title || '').toLowerCase());
+    const matches = assessments
+      .filter(a => (a.Title || '').toLowerCase() === (title || '').toLowerCase())
+      .sort((a, b) => new Date(a.AssessmentDate || a.ReviewDate || 0) - new Date(b.AssessmentDate || b.ReviewDate || 0));
     return matches.length ? matches[matches.length - 1] : null;
   };
 

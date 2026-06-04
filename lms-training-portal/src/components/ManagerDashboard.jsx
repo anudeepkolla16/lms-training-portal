@@ -105,7 +105,9 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
     return s;
   }, [profiles, isHOD, myEmail, myDept]);
 
-  const inScope = (e) => scopedEmails.has((e.EmployeeID || '').toLowerCase()) || (isHOD && myDept && (e.Department || '').toLowerCase() === myDept);
+  // Scope strictly by who's in the manager's/HOD's set (from profiles) — not by the enrollment's
+  // free-text Department, which an admin may have set to something else.
+  const inScope = (e) => scopedEmails.has((e.EmployeeID || '').toLowerCase());
 
   // Load ALL in-scope assessments (pending + already reviewed) so reviews don't vanish.
   const loadReviews = React.useCallback(async () => {

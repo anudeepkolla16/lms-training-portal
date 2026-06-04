@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getQuizQuestions, saveQuizResult } from '../services/sharePointAPI';
 
 const QuizModal = ({ course, userEmail, accessToken, onClose, onComplete }) => {
@@ -10,14 +10,17 @@ const QuizModal = ({ course, userEmail, accessToken, onClose, onComplete }) => {
   const [current, setCurrent] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const loadedRef = useRef(false);
 
   useEffect(() => {
+    if (loadedRef.current) return; // run once — onComplete identity changes shouldn't re-trigger/double-complete
+    loadedRef.current = true;
     const load = async () => {
       setLoading(true);
       try {
         const qs = await getQuizQuestions(accessToken, course.Title);
-        // Shuffle and take up to 10 random questions
-        const shuffled = qs.sort(() => Math.random() - 0.5).slice(0, 10);
+        // Shuffle (on a copy) and take up to 10 random questions
+        const shuffled = [...qs].sort(() => Math.random() - 0.5).slice(0, 10);
         if (shuffled.length === 0) {
           // No questions — mark complete directly
           onComplete(true);
@@ -91,8 +94,8 @@ const QuizModal = ({ course, userEmail, accessToken, onClose, onComplete }) => {
     setSubmitted(false);
     setResult(null);
     setCurrent(0);
-    const shuffled = questions.sort(() => Math.random() - 0.5);
-    setQuestions([...shuffled]);
+    const shuffled = [...questions].sort(() => Math.random() - 0.5);
+    setQuestions(shuffled);
   };
 
   if (loading) return (
