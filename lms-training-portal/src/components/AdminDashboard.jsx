@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults, getOrgRoles, createOrgRole, deleteOrgRole, getAllUserProfiles, upsertUserProfile, notifyCourseAssigned, sendCompletionReminders, deleteEnrollment } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults, getOrgRoles, createOrgRole, deleteOrgRole, getAllUserProfiles, upsertUserProfile, notifyCourseAssigned, sendCompletionReminders, deleteEnrollment, upsertJobDescription, seedJobDescriptions, jdTitleFor } from '../services/sharePointAPI';
 import { downloadCSV } from '../utils/csv';
 import BulkUpload from './BulkUpload';
 
@@ -126,6 +126,7 @@ const AdminDashboard = ({ accessToken, user }) => {
   // Org roles (JD taxonomy) + employee profiles
   const [orgRoles, setOrgRoles] = React.useState([]);
   const [orgRoleForm, setOrgRoleForm] = React.useState({ Title: '', Department: '' });
+  const [jdDrafts, setJdDrafts] = React.useState({}); // { [roleTitle]: documentUrl } — in-progress JD URL edits
   const [profiles, setProfiles] = React.useState([]);
   const [profileEdits, setProfileEdits] = React.useState({});
   const [newEmployee, setNewEmployee] = React.useState({ email: '', Role: 'Employee', JobRole: '', Department: '', ManagerEmail: '' });
@@ -263,6 +264,29 @@ const AdminDashboard = ({ accessToken, user }) => {
       await deleteOrgRole(accessToken, id);
       setOrgRoles(await getOrgRoles(accessToken));
     } catch { setMsg('Error deleting job-role. Please try again.'); }
+  };
+
+  // ---- Job Descriptions (one mandatory read-doc course per role) ----
+  const jdForRole = (roleTitle) => courses.find(c => (c.Title || '').toLowerCase() === jdTitleFor(roleTitle).toLowerCase());
+
+  const handleSaveJD = async (role) => {
+    setMsg('');
+    const url = (jdDrafts[role.Title] ?? (jdForRole(role.Title)?.CourseMaterials || '')).trim();
+    try {
+      await upsertJobDescription(accessToken, { role: role.Title, department: role.Department || '', url }, courses);
+      setCourses(await getCourses(accessToken));
+      setJdDrafts(d => { const n = { ...d }; delete n[role.Title]; return n; });
+      setMsg(url ? `JD saved for ${role.Title} — it will auto-assign to employees in this role.` : `JD entry saved for ${role.Title}. Add a document URL so it can be assigned.`);
+    } catch { setMsg('Error saving JD. Please try again.'); }
+  };
+
+  const handleSeedAllJDs = async () => {
+    setMsg('');
+    try {
+      const created = await seedJobDescriptions(accessToken, orgRoles, courses);
+      setCourses(await getCourses(accessToken));
+      setMsg(created > 0 ? `Created ${created} JD entr${created === 1 ? 'y' : 'ies'}. Add a document URL to each so it can be assigned.` : 'Every role already has a JD entry.');
+    } catch { setMsg('Error creating JDs. Please try again.'); }
   };
 
   const handleSaveProfile = async (email) => {
@@ -771,24 +795,47 @@ const AdminDashboard = ({ accessToken, user }) => {
             <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
               <div>
                 <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Job-Roles (JD Taxonomy) — {orgRoles.length}</h3>
-                <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px' }}>These job-roles drive training recommendations and auto-assignment. Separate from access-roles.</p>
+                <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px' }}>These job-roles drive training recommendations and auto-assignment. Set a <strong>JD document</strong> per role — it becomes a mandatory read for everyone in that role.</p>
               </div>
-              <button onClick={() => downloadCSV(`org-roles-${new Date().toISOString().slice(0,10)}.csv`, ['JobRole', 'Department'], orgRoles.map(r => [r.Title || '', r.Department || '']))} style={exportBtn(ACCENT)}>⬇ Export CSV</button>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button onClick={handleSeedAllJDs} style={{ ...exportBtn(ACCENT), background: ACCENT, color: 'white' }}>📄 Create JD for all roles</button>
+                <button onClick={() => downloadCSV(`org-roles-${new Date().toISOString().slice(0,10)}.csv`, ['JobRole', 'Department', 'JD Document'], orgRoles.map(r => [r.Title || '', r.Department || '', jdForRole(r.Title)?.CourseMaterials || '']))} style={exportBtn(ACCENT)}>⬇ Export CSV</button>
+              </div>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['Job-Role', 'Department', ''].map(hh => <th key={hh} style={thStyle}>{hh}</th>)}</tr></thead>
+              <thead><tr>{['Job-Role', 'Department', 'JD Document (mandatory read)', ''].map(hh => <th key={hh} style={thStyle}>{hh}</th>)}</tr></thead>
               <tbody>
                 {orgRoles.length === 0 ? (
-                  <tr><td colSpan={3} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No job-roles yet. Add some →</td></tr>
-                ) : orgRoles.map(r => (
+                  <tr><td colSpan={4} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No job-roles yet. Add some →</td></tr>
+                ) : orgRoles.map(r => {
+                  const jd = jdForRole(r.Title);
+                  const draftVal = jdDrafts[r.Title] ?? (jd?.CourseMaterials || '');
+                  const dirty = jdDrafts[r.Title] !== undefined && (jdDrafts[r.Title] || '') !== (jd?.CourseMaterials || '');
+                  const assigned = jd && jd.CourseMaterials;
+                  return (
                   <tr key={r.Id}>
                     <td style={tdStyle}><strong>{r.Title}</strong></td>
                     <td style={tdStyle}>{r.Department || '—'}</td>
                     <td style={tdStyle}>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <input
+                          value={draftVal}
+                          onChange={e => setJdDrafts(d => ({ ...d, [r.Title]: e.target.value }))}
+                          placeholder="Paste JD document URL (SharePoint/PDF link)"
+                          style={{ ...inputStyle, minWidth: '200px', flex: 1, margin: 0 }}
+                        />
+                        <button onClick={() => handleSaveJD(r)} disabled={!dirty && !!jd} style={{ background: (dirty || !jd) ? ACCENT : '#e2e8f0', color: (dirty || !jd) ? 'white' : '#94a3b8', padding: '7px 12px', border: 'none', borderRadius: '6px', cursor: (dirty || !jd) ? 'pointer' : 'default', fontSize: '13px', fontWeight: '600' }}>Save</button>
+                      </div>
+                      <span style={{ fontSize: '11px', color: assigned ? '#059669' : '#b45309' }}>
+                        {assigned ? '✓ Assigned as mandatory read' : jd ? '⚠ JD entry exists — add a URL to assign it' : 'No JD yet'}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>
                       <button onClick={() => handleDeleteOrgRole(r.Id)} style={{ background: '#ef4444', color: 'white', padding: '5px 12px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🗑 Delete</button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

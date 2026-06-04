@@ -110,9 +110,17 @@ The email is sent **from the signed-in employee's mailbox** (`/me/sendMail`). Se
 best-effort — if it fails, the assessment is still saved and the manager still sees it in the
 **Assessment Reviews** tab. If `Mail.Send` is not granted, only the in-app tab notification works.
 
+## Job Descriptions (mandatory read per role)
+Each job-role can have a **JD document** that every employee in that role must read & acknowledge.
+
+- In **Admin → Org Roles (JD)**, click **📄 Create JD for all roles** to seed a JD entry per role, then paste a **document URL** for each (SharePoint/PDF link) and **Save**. (Or set a single role's URL directly.)
+- Behind the scenes a JD is a mandatory document course named **`JD: <Role>`** (targeted by job-role only). It **auto-assigns** to everyone in that role once it has a URL.
+- Employees see it with a **📄 Job Description** badge — **no self-assessment, no quiz**. They **Read** it, then **✅ Acknowledge & Complete**.
+- JDs are excluded from the self-enroll **Browse All Courses** catalog.
+
 ## How the workflow runs
-1. **Admin** adds job-roles (Org Roles tab), tags courses with `JobRoles`/`Departments` + `Mandatory`, and fills employee profiles (`JobRole`/`Department`/`ManagerEmail`).
-2. **Employee** signs in → mandatory matching courses are auto-enrolled (idempotent). They can also **Browse All Courses** and self-enroll.
+1. **Admin** adds job-roles (Org Roles tab), sets a **JD document** per role, tags courses with `JobRoles`/`Departments` + `Mandatory`, and fills employee profiles (`JobRole`/`Department`/`ManagerEmail`).
+2. **Employee** signs in → mandatory matching courses **and their role's JD** are auto-enrolled (idempotent). They can also **Browse All Courses** and self-enroll.
 3. **Before** starting a course the employee does a **Self-Assessment (1–5)** — "how well do you already know this?":
    - **≥ 4** (already know it) → `PendingManagerReview` → appears in the manager's **Assessment Reviews** tab. Manager **approves** → course marked **Completed** (skipped, `Approved`); or sets a rating **< 4** → employee must take the training. If the employee has **no manager**, ≥ 4 is auto-approved.
    - **< 4** (need training) → `Remediation` → employee takes the course + passes the quiz (→ `RemediationQuizPassed`, Completed).

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getMyEnrollments, getCourses, updateEnrollmentStatus, getMyAssessments, autoAssignMandatory, updateAssessment, matchesCsv, isTruthy } from '../services/sharePointAPI';
+import { getMyEnrollments, getCourses, updateEnrollmentStatus, getMyAssessments, autoAssignMandatory, updateAssessment, matchesCsv, isTruthy, isJobDescription } from '../services/sharePointAPI';
 import QuizModal from './QuizModal';
 import SelfAssessmentModal from './SelfAssessmentModal';
 import CourseCatalog from './CourseCatalog';
@@ -224,9 +224,11 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
             const recommended = matchesCsv(e.JobRoles, userProfile?.jobRole) || matchesCsv(e.Departments, userProfile?.department);
             const state = a?.AssessmentState;
             const isCompleted = e.Status === 'Completed';
+            const isJD = isJobDescription(e.Title); // mandatory read-&-acknowledge document, no quiz/self-assessment
             const pendingReview = state === 'PendingManagerReview';
             const needsTraining = state === 'Remediation'; // self-rated < 4, or manager required training
-            const canSelfAssess = !isCompleted && !a; // pre-course "do you already know this?" gate
+            const canSelfAssess = !isCompleted && !a && !isJD; // pre-course "do you already know this?" gate
+            const readyToAck = readCourses.has(e.Id) || !e.CourseMaterials; // JD acknowledge unlocks after reading
             return (
             <div key={e.Id} style={{
               background: 'white', borderRadius: '12px', padding: '20px 24px',
@@ -241,8 +243,9 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
                     background: statusBg(e.Status), color: statusText(e.Status),
                     padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600'
                   }}>{e.Status || 'Not Started'}</span>
-                  {isTruthy(e.Mandatory) && recommended && <span style={{ background: '#fef3c7', color: '#92400e', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>🔒 Mandatory</span>}
-                  {assessmentBadge(a)}
+                  {isJD && <span style={{ background: '#ede9fe', color: '#5b21b6', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>📄 Job Description</span>}
+                  {isTruthy(e.Mandatory) && recommended && !isJD && <span style={{ background: '#fef3c7', color: '#92400e', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>🔒 Mandatory</span>}
+                  {!isJD && assessmentBadge(a)}
                   {e.Department && <span style={{ color: '#64748b', fontSize: '13px' }}>🏢 {e.Department}</span>}
                   {e.Duration && <span style={{ color: '#64748b', fontSize: '13px' }}>⏱ {e.Duration}</span>}
                   {e.DueDate && <span style={{ color: new Date(e.DueDate) < new Date() && e.Status !== 'Completed' ? '#ef4444' : '#64748b', fontSize: '13px' }}>
@@ -251,6 +254,24 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '10px', flexShrink: 0, flexWrap: 'wrap' }}>
+                {isJD && !isCompleted && (
+                  <>
+                    {e.CourseMaterials && (
+                      <button onClick={() => { markAsRead(e.Id); setSelectedCourse(e); setShowPDF(true); }} style={{
+                        background: '#3b82f6', color: 'white', padding: '9px 16px',
+                        borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
+                      }}>
+                        📄 Read JD
+                      </button>
+                    )}
+                    <button onClick={() => handleMarkComplete(e.Id)} disabled={!readyToAck} title={readyToAck ? '' : 'Read the job description first'} style={{
+                      background: readyToAck ? '#10b981' : '#d1d5db', color: readyToAck ? 'white' : '#9ca3af',
+                      padding: '9px 16px', borderRadius: '8px', border: 'none', cursor: readyToAck ? 'pointer' : 'not-allowed', fontSize: '13px', fontWeight: '600'
+                    }}>
+                      ✅ Acknowledge & Complete
+                    </button>
+                  </>
+                )}
                 {canSelfAssess && (
                   <button onClick={() => setAssessCourse(e)} style={{
                     background: '#8b5cf6', color: 'white', padding: '9px 16px',
@@ -314,6 +335,14 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
                 const needsTraining = a?.AssessmentState === 'Remediation';
                 if (selectedCourse.Status === 'Completed') {
                   return <span style={{ background: '#d1fae5', color: '#065f46', padding: '8px 14px', borderRadius: '7px', fontSize: '13px', fontWeight: '600' }}>✅ Completed</span>;
+                }
+                if (isJobDescription(selectedCourse.Title)) {
+                  return (
+                    <button onClick={() => { handleMarkComplete(selectedCourse.Id); setShowPDF(false); setSelectedCourse(null); }}
+                      style={{ background: '#10b981', color: 'white', padding: '8px 14px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                      ✅ Acknowledge & Complete
+                    </button>
+                  );
                 }
                 if (!needsTraining) return null; // course is gated behind the self-assessment
                 return (
@@ -384,11 +413,30 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
               const a = assessmentFor(selectedCourse.Title);
               const state = a?.AssessmentState;
               const isCompleted = selectedCourse.Status === 'Completed';
+              const isJD = isJobDescription(selectedCourse.Title);
               const needsTraining = state === 'Remediation';
-              const canSelfAssess = !isCompleted && !a;
+              const canSelfAssess = !isCompleted && !a && !isJD;
               const canTakeQuiz = !selectedCourse.CourseMaterials || readCourses.has(selectedCourse.Id);
               return (
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  {isJD && !isCompleted && (
+                    <>
+                      {selectedCourse.CourseMaterials && (
+                        <button onClick={() => { markAsRead(selectedCourse.Id); setShowPDF(true); }} style={{
+                          background: '#3b82f6', color: 'white', padding: '11px 18px',
+                          borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600', flex: 1
+                        }}>
+                          📄 Read Job Description
+                        </button>
+                      )}
+                      <button onClick={() => { handleMarkComplete(selectedCourse.Id); setSelectedCourse(null); }} disabled={!canTakeQuiz} title={canTakeQuiz ? '' : 'Read the job description first'} style={{
+                        background: canTakeQuiz ? '#10b981' : '#d1d5db', color: canTakeQuiz ? 'white' : '#9ca3af',
+                        padding: '11px 18px', borderRadius: '8px', border: 'none', cursor: canTakeQuiz ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: '700', flex: 1
+                      }}>
+                        ✅ Acknowledge & Complete
+                      </button>
+                    </>
+                  )}
                   {canSelfAssess && (
                     <button onClick={() => { setSelectedCourse(null); setAssessCourse(selectedCourse); }} style={{
                       background: '#8b5cf6', color: 'white', padding: '11px 18px',
