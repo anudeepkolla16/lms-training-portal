@@ -5,7 +5,7 @@ import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import HRDashboard from './components/HRDashboard';
 import ManagerDashboard from './components/ManagerDashboard';
-import { getUserProfile } from './services/sharePointAPI';
+import { getUserProfile, getAllUserProfiles } from './services/sharePointAPI';
 import './App.css';
 
 const SP_SCOPES = ["https://graph.microsoft.com/Sites.ReadWrite.All", "https://graph.microsoft.com/Mail.Send"];
@@ -16,7 +16,8 @@ const AppContent = () => {
   const [accessToken, setAccessToken] = React.useState(null);
   const [userProfile, setUserProfile] = React.useState(null);
   const [roleLoading, setRoleLoading] = React.useState(false);
-  const [showMyTraining, setShowMyTraining] = React.useState(false);
+  const [managesReports, setManagesReports] = React.useState(false);
+  const [view, setView] = React.useState(null);
   const userRole = userProfile?.role || null;
 
   // Get SharePoint token after login completes
@@ -50,6 +51,16 @@ const AppContent = () => {
       });
     }
   }, [accessToken, accounts, userProfile]);
+
+  // Detect whether this user manages anyone (is listed as someone's ManagerEmail) → unlocks the Team view
+  React.useEffect(() => {
+    if (accessToken && accounts.length > 0) {
+      const email = (accounts[0].username || '').toLowerCase();
+      getAllUserProfiles(accessToken)
+        .then(profiles => setManagesReports(profiles.some(p => (p.ManagerEmail || '').toLowerCase() === email)))
+        .catch(() => {});
+    }
+  }, [accessToken, accounts]);
 
   // Not logged in
   if (!isAuthenticated) {
@@ -102,35 +113,37 @@ const AppContent = () => {
     );
   }
 
-  const navColor = userRole === 'HR'
-    ? 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)'
-    : userRole === 'Manager'
-      ? 'linear-gradient(135deg, #f59e0b 0%, #fb923c 100%)'
-      : userRole === 'HOD'
-        ? 'linear-gradient(135deg, #0d9488 0%, #0891b2 100%)'
-        : userRole === 'Admin'
-          ? 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)'
-          : 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+  const VIEW_META = {
+    training: { label: '📚 My Training', color: '#10b981', grad: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' },
+    manager:  { label: '👥 My Team',     color: '#f59e0b', grad: 'linear-gradient(135deg, #f59e0b 0%, #fb923c 100%)' },
+    hod:      { label: '🏢 Department',  color: '#0d9488', grad: 'linear-gradient(135deg, #0d9488 0%, #0891b2 100%)' },
+    hr:       { label: '📊 HR Analytics', color: '#8b5cf6', grad: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)' },
+    admin:    { label: '⚙️ Admin',       color: '#0ea5e9', grad: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)' },
+  };
 
-  const roleAccentColor = userRole === 'HR'
-    ? '#8b5cf6'
-    : userRole === 'Manager'
-      ? '#f59e0b'
-      : userRole === 'HOD'
-        ? '#0d9488'
-        : userRole === 'Admin'
-          ? '#0ea5e9'
-          : '#10b981';
+  // Views this user can access — a person may hold several (e.g. Admin who also manages reports).
+  const availableViews = ['training'];
+  if (managesReports || userRole === 'Manager') availableViews.push('manager');
+  if (userRole === 'HOD') availableViews.push('hod');
+  if (userRole === 'HR') availableViews.push('hr');
+  if (userRole === 'Admin') availableViews.push('admin');
+
+  const primaryView = userRole === 'Admin' ? 'admin'
+    : userRole === 'HR' ? 'hr'
+    : userRole === 'HOD' ? 'hod'
+    : userRole === 'Manager' ? 'manager'
+    : 'training';
+  const activeView = (view && availableViews.includes(view)) ? view : primaryView;
+
+  const navColor = VIEW_META[activeView].grad;
+  const roleAccentColor = VIEW_META[activeView].color;
 
   const renderDashboard = () => {
-    if (showMyTraining || userRole === 'Employee') {
-      return <Dashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
-    }
-    switch (userRole) {
-      case 'Admin': return <AdminDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
-      case 'HR': return <HRDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
-      case 'Manager': return <ManagerDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} scope="reports" />;
-      case 'HOD': return <ManagerDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} scope="department" />;
+    switch (activeView) {
+      case 'admin': return <AdminDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
+      case 'hr': return <HRDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
+      case 'manager': return <ManagerDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} scope="reports" />;
+      case 'hod': return <ManagerDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} scope="department" />;
       default: return <Dashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
     }
   };
@@ -143,28 +156,24 @@ const AppContent = () => {
         boxShadow: '0 2px 12px rgba(0,0,0,0.15)'
       }}>
         <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>📚 Training Portal</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{
-            background: 'rgba(255,255,255,0.25)', padding: '4px 14px',
-            borderRadius: '20px', fontSize: '13px', fontWeight: '700'
-          }}>
-            {userRole}
-          </span>
-          <span style={{ fontSize: '13px', opacity: 0.9 }}>
-            {accounts[0]?.name || accounts[0]?.username}
-          </span>
-          {userRole !== 'Employee' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {availableViews.map(v => (
             <button
-              onClick={() => setShowMyTraining(v => !v)}
+              key={v}
+              onClick={() => setView(v)}
               style={{
-                background: 'white', color: roleAccentColor,
-                padding: '8px 16px', borderRadius: '8px', border: 'none',
+                background: activeView === v ? 'white' : 'rgba(255,255,255,0.18)',
+                color: activeView === v ? roleAccentColor : 'white',
+                padding: '8px 14px', borderRadius: '8px', border: 'none',
                 cursor: 'pointer', fontWeight: '600', fontSize: '13px'
               }}
             >
-              {showMyTraining ? '← Back to Dashboard' : '📚 My Training'}
+              {VIEW_META[v].label}
             </button>
-          )}
+          ))}
+          <span style={{ fontSize: '13px', opacity: 0.9, marginLeft: '4px' }}>
+            {accounts[0]?.name || accounts[0]?.username}
+          </span>
           <button
             onClick={() => instance.logoutRedirect()}
             style={{
