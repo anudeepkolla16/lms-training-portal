@@ -16,6 +16,7 @@ export const downloadCSV = (filename, headers, rows) => {
 // Parse CSV text into { headers, objects }. Handles quoted fields, escaped quotes,
 // commas and newlines inside quotes. Keys come from the header row.
 export const parseCSV = (text) => {
+  text = String(text).replace(/^﻿/, ''); // strip a leading BOM (Excel-saved UTF-8 CSVs)
   const rows = [];
   let i = 0, field = '', row = [], inQuotes = false;
   const pushField = () => { row.push(field); field = ''; };

@@ -14,7 +14,9 @@ const SelfAssessmentModal = ({ course, userEmail, managerEmail, accessToken, exi
     if (!rating) { setError('Please select a rating from 1 to 5.'); return; }
     setError('');
     setSaving(true);
-    const nextState = rating >= 4 ? 'PendingManagerReview' : 'Remediation';
+    const hasManager = !!(managerEmail && managerEmail.trim());
+    // >=4 with a manager → review; >=4 with no manager → auto-approved (nobody to route to); <4 → redo
+    const nextState = rating >= 4 ? (hasManager ? 'PendingManagerReview' : 'Approved') : 'Remediation';
     const fields = {
       Title: course.Title,
       EmployeeID: userEmail,
@@ -23,6 +25,7 @@ const SelfAssessmentModal = ({ course, userEmail, managerEmail, accessToken, exi
       ManagerEmail: managerEmail || '',
       EmployeeComment: comment || '',
     };
+    if (nextState === 'Approved') { fields.ManagerRating = rating; fields.ReviewDate = new Date().toISOString(); }
     try {
       if (existingAssessment?.Id) {
         await updateAssessment(accessToken, existingAssessment.Id, fields);

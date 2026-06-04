@@ -20,11 +20,11 @@ const BulkUpload = ({ title, accent = '#0ea5e9', templateName, templateHeaders, 
     const { objects } = parseCSV(text);
     if (!objects.length) { setSummary({ ok: 0, fail: 0, errors: ['No data rows found in the file.'] }); return; }
     setBusy(true);
-    let ok = 0, fail = 0; const errors = [];
+    let ok = 0, fail = 0, skipped = 0; const errors = [];
     for (let idx = 0; idx < objects.length; idx++) {
       try {
         const payload = mapRow ? mapRow(objects[idx]) : objects[idx];
-        if (!payload) continue;
+        if (!payload) { skipped++; continue; }
         await onSubmitRow(payload);
         ok++;
       } catch (err) {
@@ -33,7 +33,7 @@ const BulkUpload = ({ title, accent = '#0ea5e9', templateName, templateHeaders, 
       }
     }
     setBusy(false);
-    setSummary({ ok, fail, errors });
+    setSummary({ ok, fail, skipped, errors });
     if (fileRef.current) fileRef.current.value = '';
     onDone && onDone();
   };
@@ -65,6 +65,7 @@ const BulkUpload = ({ title, accent = '#0ea5e9', templateName, templateHeaders, 
         <div style={{ marginTop: '12px', fontSize: '13px' }}>
           <span style={{ color: '#065f46', fontWeight: '600' }}>✅ {summary.ok} added</span>
           {summary.fail > 0 && <span style={{ color: '#991b1b', fontWeight: '600', marginLeft: '14px' }}>❌ {summary.fail} failed</span>}
+          {summary.skipped > 0 && <span style={{ color: '#92400e', fontWeight: '600', marginLeft: '14px' }}>⚠️ {summary.skipped} skipped (missing required column — check the header row)</span>}
           {summary.errors?.length > 0 && (
             <ul style={{ margin: '8px 0 0', paddingLeft: '18px', color: '#991b1b' }}>
               {summary.errors.map((er, i) => <li key={i}>{er}</li>)}

@@ -85,13 +85,14 @@ export const isTruthy = (v) => v === true || v === 'true' || v === 1 || v === '1
 export const getMyEnrollments = async (token, userEmail) => {
   try {
     const siteId = await getSiteId(token);
-    // Only escape single quotes for OData - do NOT encodeURIComponent the email value
-    const safeEmail = (userEmail || '').replace(/'/g, "''");
+    const me = (userEmail || '').toLowerCase();
+    // Filter client-side (case-insensitive) — SharePoint OData `eq` on text is case-sensitive,
+    // so a casing mismatch between login and stored EmployeeID would hide all the user's courses.
     const res = await axios.get(
-      `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items?$expand=fields&$filter=fields/EmployeeID eq '${safeEmail}'&$top=1000`,
+      `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items?$expand=fields&$top=5000`,
       h(token)
     );
-    return (res.data?.value || res.d?.results || []).map(mapItem);
+    return (res.data?.value || []).map(mapItem).filter(e => (e.EmployeeID || '').toLowerCase() === me);
   } catch (e) {
     console.warn('getMyEnrollments error:', e?.response?.data?.error?.message || e.message);
     return []; // Return empty - no mock data for employee view
@@ -151,9 +152,11 @@ export const deleteEnrollment = async (token, enrollmentId) => {
 export const enrollEmployee = async (token, data) => {
   try {
     const siteId = await getSiteId(token);
+    const fields = { ...data };
+    if (fields.EmployeeID) fields.EmployeeID = String(fields.EmployeeID).toLowerCase(); // normalize for consistent matching/dedup
     const res = await axios.post(
       `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items`,
-      { fields: data },
+      { fields },
       h(token)
     );
     return res.data;
@@ -245,21 +248,22 @@ export const getAllUserProfiles = async (token) => {
 // Create or update a UserRoles row (email is the Title key). Sets JobRole/Department/ManagerEmail (and Role if provided).
 export const upsertUserProfile = async (token, { email, Role, JobRole, Department, ManagerEmail }) => {
   const siteId = await getSiteId(token);
+  const lcEmail = (email || '').toLowerCase();
   const fields = {};
   if (Role !== undefined) fields.Role = Role;
   if (JobRole !== undefined) fields.JobRole = JobRole;
   if (Department !== undefined) fields.Department = Department;
-  if (ManagerEmail !== undefined) fields.ManagerEmail = ManagerEmail;
+  if (ManagerEmail !== undefined) fields.ManagerEmail = (ManagerEmail || '').toLowerCase();
   try {
     const res = await axios.get(
       `${GRAPH}/sites/${siteId}/lists/UserRoles/items?$expand=fields&$top=1000`,
       h(token)
     );
-    const match = (res.data.value || []).find(i => (i.fields?.Title || '').toLowerCase() === (email || '').toLowerCase());
+    const match = (res.data.value || []).find(i => (i.fields?.Title || '').toLowerCase() === lcEmail);
     if (match) {
       await axios.patch(`${GRAPH}/sites/${siteId}/lists/UserRoles/items/${match.id}`, { fields }, h(token));
     } else {
-      await axios.post(`${GRAPH}/sites/${siteId}/lists/UserRoles/items`, { fields: { Title: email, ...fields } }, h(token));
+      await axios.post(`${GRAPH}/sites/${siteId}/lists/UserRoles/items`, { fields: { Title: lcEmail, ...fields } }, h(token));
     }
   } catch (e) { console.error('upsertUserProfile error:', e?.response?.data || e.message); throw e; }
 };
@@ -302,11 +306,12 @@ export const deleteOrgRole = async (token, id) => {
 export const getMyAssessments = async (token, userEmail) => {
   try {
     const siteId = await getSiteId(token);
+    const me = (userEmail || '').toLowerCase();
     const res = await axios.get(
-      `${GRAPH}/sites/${siteId}/lists/Self%20Assessments/items?$expand=fields&$filter=fields/EmployeeID eq '${(userEmail||'').replace(/'/g,"''")}'&$top=500`,
+      `${GRAPH}/sites/${siteId}/lists/Self%20Assessments/items?$expand=fields&$top=5000`,
       h(token)
     );
-    return (res.data.value || []).map(mapItem);
+    return (res.data.value || []).map(mapItem).filter(a => (a.EmployeeID || '').toLowerCase() === me);
   } catch (e) {
     console.warn('getMyAssessments fallback:', e?.response?.data?.error?.message || e.message);
     return [];
@@ -436,7 +441,7 @@ export const saveSelfAssessment = async (token, data) => {
     const siteId = await getSiteId(token);
     const res = await axios.post(
       `${GRAPH}/sites/${siteId}/lists/Self%20Assessments/items`,
-      { fields: { ...data, AssessmentDate: new Date().toISOString() } },
+      { fields: { ...data, EmployeeID: (data.EmployeeID || '').toLowerCase(), ManagerEmail: (data.ManagerEmail || '').toLowerCase(), AssessmentDate: new Date().toISOString() } },
       h(token)
     );
     return res.data;
@@ -500,7 +505,7 @@ export const saveQuizResult = async (token, data) => {
     const siteId = await getSiteId(token);
     const res = await axios.post(
       `${GRAPH}/sites/${siteId}/lists/Quiz%20Results/items`,
-      { fields: { ...data, AttemptDate: new Date().toISOString() } },
+      { fields: { ...data, EmployeeID: (data.EmployeeID || '').toLowerCase(), AttemptDate: new Date().toISOString() } },
       h(token)
     );
     return res.data;
@@ -527,11 +532,12 @@ export const getQuizResults = async (token) => {
 export const getMyQuizResults = async (token, userEmail) => {
   try {
     const siteId = await getSiteId(token);
+    const me = (userEmail || '').toLowerCase();
     const res = await axios.get(
-      `${GRAPH}/sites/${siteId}/lists/Quiz%20Results/items?$expand=fields&$filter=fields/EmployeeID eq '${(userEmail||'').replace(/'/g,"''")}'&$top=100`,
+      `${GRAPH}/sites/${siteId}/lists/Quiz%20Results/items?$expand=fields&$top=5000`,
       h(token)
     );
-    return (res.data.value || []).map(mapItem);
+    return (res.data.value || []).map(mapItem).filter(r => (r.EmployeeID || '').toLowerCase() === me);
   } catch (e) {
     console.warn('getMyQuizResults error:', e?.response?.data?.error?.message || e.message);
     return [];
