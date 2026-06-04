@@ -1,5 +1,5 @@
 import React from 'react';
-import { getAllEnrollments, getQuizResults, sendCompletionReminders } from '../services/sharePointAPI';
+import { getAllEnrollments, getQuizResults, sendCompletionReminders, getAllJdAcknowledgements, getAllUserProfiles, getCourses, isJobDescription, roleFromJdTitle } from '../services/sharePointAPI';
 import { downloadCSV } from '../utils/csv';
 
 const thStyle = {
@@ -88,6 +88,10 @@ const HRDashboard = ({ accessToken, user }) => {
   const [loading, setLoading] = React.useState(true);
   const [quizResults, setQuizResults] = React.useState([]);
   const [quizLoaded, setQuizLoaded] = React.useState(false);
+  const [jdAcks, setJdAcks] = React.useState([]);
+  const [jdProfiles, setJdProfiles] = React.useState([]);
+  const [jdRoleSet, setJdRoleSet] = React.useState(new Set());
+  const [jdLoaded, setJdLoaded] = React.useState(false);
   const [dept, setDept] = React.useState('');
   const [reminding, setReminding] = React.useState(false);
   const [reminderMsg, setReminderMsg] = React.useState('');
@@ -111,6 +115,44 @@ const HRDashboard = ({ accessToken, user }) => {
       setQuizLoaded(true);
     }
   };
+
+  const handleJdTabActivate = async () => {
+    setActiveTab('jd');
+    if (!jdLoaded) {
+      const [acks, profiles, courses] = await Promise.all([
+        getAllJdAcknowledgements(accessToken),
+        getAllUserProfiles(accessToken),
+        getCourses(accessToken),
+      ]);
+      setJdAcks(acks);
+      setJdProfiles(profiles);
+      // The set of job-roles that actually have a JD document course
+      setJdRoleSet(new Set(courses.filter(c => isJobDescription(c.Title)).map(c => roleFromJdTitle(c.Title).toLowerCase())));
+      setJdLoaded(true);
+    }
+  };
+
+  // Build the "who needs to sign their JD, and have they" matrix from profiles × JD courses × acks.
+  const jdRows = jdProfiles
+    .filter(p => (p.JobRole || '').trim() && jdRoleSet.has((p.JobRole || '').trim().toLowerCase()))
+    .map(p => {
+      const email = (p.Title || '').toLowerCase();
+      const role = (p.JobRole || '').trim();
+      const ack = jdAcks.find(a => (a.EmployeeID || '').toLowerCase() === email &&
+        ((a.Role || '').trim().toLowerCase() === role.toLowerCase() || roleFromJdTitle(a.Title).toLowerCase() === role.toLowerCase()));
+      return { employee: p.Title || '—', role, department: p.Department || '', signed: !!ack, signature: ack?.Signature || '', date: ack?.AcknowledgedDate || null };
+    })
+    .filter(r => !dept || r.department === dept)
+    .sort((a, b) => Number(a.signed) - Number(b.signed) || a.employee.localeCompare(b.employee));
+
+  const jdSigned = jdRows.filter(r => r.signed).length;
+  const jdRate = jdRows.length ? Math.round((jdSigned / jdRows.length) * 100) : 0;
+
+  const exportJdCSV = () => downloadCSV(
+    `jd-signoffs-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Employee', 'Role', 'Department', 'Status', 'Signature', 'Acknowledged Date'],
+    jdRows.map(r => [r.employee, r.role, r.department, r.signed ? 'Signed' : 'Pending', r.signature, r.date ? new Date(r.date).toLocaleString() : ''])
+  );
 
   const uniqueEmployees = new Set(enrollments.map(e => e.EmployeeID).filter(Boolean)).size;
   const completedCount = enrollments.filter(e => e.Status === 'Completed').length;
@@ -157,7 +199,8 @@ const HRDashboard = ({ accessToken, user }) => {
     { id: 'compliance', label: 'Compliance Report' },
     { id: 'overdue', label: `Overdue (${overdueList.length})` },
     { id: 'all', label: 'All Enrollments' },
-    { id: 'quiz', label: 'Quiz Results' }
+    { id: 'quiz', label: 'Quiz Results' },
+    { id: 'jd', label: 'JD Sign-offs' }
   ];
 
   if (loading) return (
@@ -215,7 +258,7 @@ const HRDashboard = ({ accessToken, user }) => {
         {tabs.map(t => (
           <button
             key={t.id}
-            onClick={() => t.id === 'quiz' ? handleQuizTabActivate() : setActiveTab(t.id)}
+            onClick={() => t.id === 'quiz' ? handleQuizTabActivate() : t.id === 'jd' ? handleJdTabActivate() : setActiveTab(t.id)}
             style={{
               padding: '8px 18px',
               borderRadius: '7px',
@@ -434,6 +477,62 @@ const HRDashboard = ({ accessToken, user }) => {
           </div>
         );
       })()}
+
+      {activeTab === 'jd' && (
+        <div>
+          {/* Summary Cards */}
+          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '20px' }}>
+            {[
+              { label: 'Employees requiring a JD', value: jdRows.length, color: ACCENT, icon: '👥' },
+              { label: 'Signed', value: jdSigned, color: '#10b981', icon: '✍' },
+              { label: 'Pending', value: jdRows.length - jdSigned, color: '#ef4444', icon: '⏳' },
+            ].map(c => (
+              <StatCard key={c.label} label={c.label} value={c.value} icon={c.icon} color={c.color} />
+            ))}
+            <div style={{ background: 'white', borderRadius: '12px', padding: '22px 24px', flex: '1', minWidth: '180px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', borderTop: `4px solid ${ACCENT}` }}>
+              <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '10px', fontWeight: '600' }}>JD compliance</div>
+              <ComplianceRateBar rate={jdRate} />
+            </div>
+          </div>
+
+          <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '15px', fontWeight: '700' }}>JD Sign-offs ({jdRows.length}){dept ? ` — ${dept}` : ''}</h3>
+                <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px' }}>Employees whose job-role has a JD document, and whether they've signed it. Use the department filter above.</p>
+              </div>
+              <button onClick={exportJdCSV} style={{ ...btnStyle, padding: '7px 16px', fontSize: '13px' }}>⬇ Export CSV</button>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>{['Employee', 'Role', 'Department', 'Status', 'Signature', 'Acknowledged'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {!jdLoaded ? (
+                    <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>Loading…</td></tr>
+                  ) : jdRows.length === 0 ? (
+                    <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No employees with a JD-bearing role{dept ? ' in this department' : ''}. Set JD documents in Admin → Org Roles (JD).</td></tr>
+                  ) : jdRows.map((r, idx) => (
+                    <tr key={idx}>
+                      <td style={tdStyle}>{r.employee}</td>
+                      <td style={tdStyle}>{r.role}</td>
+                      <td style={tdStyle}>{r.department || '—'}</td>
+                      <td style={tdStyle}>
+                        <span style={{ background: r.signed ? '#d1fae5' : '#fef3c7', color: r.signed ? '#065f46' : '#92400e', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>
+                          {r.signed ? '✍ Signed' : '⏳ Pending'}
+                        </span>
+                      </td>
+                      <td style={{ ...tdStyle, fontFamily: r.signature ? 'cursive' : 'inherit' }}>{r.signature || '—'}</td>
+                      <td style={tdStyle}>{r.date ? new Date(r.date).toLocaleDateString() : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
