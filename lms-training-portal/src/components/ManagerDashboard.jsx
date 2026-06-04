@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, getQuizResults, getAssessmentsForManager, updateAssessment, notifyCourseAssigned, sendCompletionReminders, getAllUserProfiles, getAllSelfAssessments } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, getQuizResults, updateAssessment, updateEnrollmentStatus, notifyCourseAssigned, notifyAssessmentReviewed, sendCompletionReminders, getAllUserProfiles, getAllSelfAssessments } from '../services/sharePointAPI';
 import { downloadCSV } from '../utils/csv';
 
 
@@ -107,35 +107,53 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
 
   const inScope = (e) => scopedEmails.has((e.EmployeeID || '').toLowerCase()) || (isHOD && myDept && (e.Department || '').toLowerCase() === myDept);
 
+  // Load ALL in-scope assessments (pending + already reviewed) so reviews don't vanish.
   const loadReviews = React.useCallback(async () => {
+    const all = await getAllSelfAssessments(accessToken);
+    let inScopeA;
     if (isHOD) {
-      const all = await getAllSelfAssessments(accessToken);
       const deptEmails = new Set(profiles.filter(p => myDept && (p.Department || '').toLowerCase() === myDept).map(p => (p.Title || '').toLowerCase()));
-      setReviews(all.filter(a => a.AssessmentState === 'PendingManagerReview' && deptEmails.has((a.EmployeeID || '').toLowerCase())));
+      inScopeA = all.filter(a => deptEmails.has((a.EmployeeID || '').toLowerCase()));
     } else {
-      const r = await getAssessmentsForManager(accessToken, user?.username || '');
-      setReviews(r);
+      inScopeA = all.filter(a => (a.ManagerEmail || '').toLowerCase() === myEmail);
     }
-  }, [accessToken, user, isHOD, profiles, myDept]);
+    setReviews(inScopeA);
+  }, [accessToken, isHOD, profiles, myDept, myEmail]);
 
   React.useEffect(() => { loadReviews(); }, [loadReviews]);
 
-  const handleReview = async (review, action) => {
-    const edit = reviewEdits[review.Id] || {};
-    const finalRating = action === 'adjust' ? Number(edit.rating || review.SelfRating) : review.SelfRating;
+  const findEnrollment = (review) => enrollments.find(e =>
+    (e.EmployeeID || '').toLowerCase() === (review.EmployeeID || '').toLowerCase() &&
+    (e.Title || '').toLowerCase() === (review.Title || '').toLowerCase());
+
+  // Apply a manager rating. < 4 → employee must redo (Remediation + course reopened + email);
+  // >= 4 → Approved (course stays Completed). Re-runnable so mistakes can be corrected.
+  const applyReview = async (review, ratingValue, comment) => {
+    const finalRating = Number(ratingValue);
+    const needsRedo = finalRating < 4;
     setMsg('');
     try {
       await updateAssessment(accessToken, review.Id, {
-        AssessmentState: 'Approved',
+        AssessmentState: needsRedo ? 'Remediation' : 'Approved',
         ManagerRating: finalRating,
-        ManagerComment: edit.comment || '',
+        ManagerComment: comment || review.ManagerComment || '',
         ReviewDate: new Date().toISOString(),
       });
-      setMsg(`Review saved for ${(review.EmployeeID || '').split('@')[0]} — ${review.Title}.`);
+      const enr = findEnrollment(review);
+      if (enr) await updateEnrollmentStatus(accessToken, enr.Id, needsRedo ? 'In Progress' : 'Completed');
+      notifyAssessmentReviewed(accessToken, review.EmployeeID, review.Title, finalRating, needsRedo); // best-effort
+      setMsg(`Saved: ${(review.EmployeeID || '').split('@')[0]} — ${review.Title} → ${finalRating}/5${needsRedo ? ' (sent back for redo, employee notified)' : ' (approved)'}.`);
       await loadReviews();
+      setEnrollments(await getAllEnrollments(accessToken));
     } catch {
       setMsg('Error saving review. Please try again.');
     }
+  };
+
+  const handleReview = (review, action) => {
+    const edit = reviewEdits[review.Id] || {};
+    const finalRating = action === 'adjust' ? (edit.rating || review.SelfRating) : (review.ManagerRating || review.SelfRating);
+    applyReview(review, finalRating, edit.comment);
   };
 
   React.useEffect(() => {
@@ -228,10 +246,15 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
     setSubmitting(false);
   };
 
+  const pendingReviews = reviews.filter(a => a.AssessmentState === 'PendingManagerReview');
+  const reviewedAssessments = reviews
+    .filter(a => ['Approved', 'Remediation', 'RemediationQuizPassed'].includes(a.AssessmentState))
+    .sort((a, b) => new Date(b.ReviewDate || 0) - new Date(a.ReviewDate || 0));
+
   const tabs = [
     { id: 'team', label: isHOD ? 'Department Progress' : 'Team Progress' },
     { id: 'assign', label: 'Assign Course' },
-    { id: 'reviews', label: `Assessment Reviews${reviews.length ? ` (${reviews.length})` : ''}` }
+    { id: 'reviews', label: `Assessment Reviews${pendingReviews.length ? ` (${pendingReviews.length})` : ''}` }
   ];
 
   if (loading) return (
@@ -461,16 +484,19 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
       {activeTab === 'reviews' && (
         <div>
           <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 16px' }}>
-            Employees who self-rated 4 or 5 after completing a course. Approve their rating, or adjust it if needed.
+            Approve to keep the employee's rating, or set a lower one — <strong style={{ color: '#991b1b' }}>a final rating below 4 sends the course back for redo</strong> and emails the employee. Reviewed items stay below and can be changed if you make a mistake.
           </p>
-          {reviews.length === 0 ? (
-            <div style={{ background: 'white', borderRadius: '12px', padding: '48px', textAlign: 'center', color: '#9ca3af', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+
+          <h3 style={{ margin: '0 0 12px', color: '#1e293b', fontSize: '15px', fontWeight: '700' }}>Pending ({pendingReviews.length})</h3>
+          {pendingReviews.length === 0 ? (
+            <div style={{ background: 'white', borderRadius: '12px', padding: '32px', textAlign: 'center', color: '#9ca3af', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
               No pending assessment reviews.
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
-              {reviews.map(r => {
+              {pendingReviews.map(r => {
                 const edit = reviewEdits[r.Id] || {};
+                const chosen = Number(edit.rating ?? r.SelfRating);
                 return (
                   <div key={r.Id} style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', borderLeft: `4px solid ${ACCENT}` }}>
                     <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>{(r.EmployeeID || '').split('@')[0]}</div>
@@ -482,20 +508,64 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
                     </div>
                     {r.EmployeeComment && <div style={{ fontSize: '12px', color: '#6b7280', fontStyle: 'italic', marginBottom: '12px' }}>“{r.EmployeeComment}”</div>}
 
-                    <label style={labelStyle}>Adjust rating (optional)</label>
+                    <label style={labelStyle}>Final rating</label>
                     <select style={{ ...inputStyle, marginBottom: '10px' }} value={edit.rating ?? r.SelfRating} onChange={e => setReviewEdits(p => ({ ...p, [r.Id]: { ...edit, rating: e.target.value } }))}>
-                      {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                      {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}{n < 4 ? ' — needs redo' : ''}</option>)}
                     </select>
                     <input style={{ ...inputStyle, marginBottom: '12px' }} placeholder="Comment (optional)" value={edit.comment || ''} onChange={e => setReviewEdits(p => ({ ...p, [r.Id]: { ...edit, comment: e.target.value } }))} />
 
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => handleReview(r, 'approve')} style={{ ...btnStyle, background: '#10b981', flex: 1, padding: '9px' }}>✅ Approve</button>
-                      <button onClick={() => handleReview(r, 'adjust')} style={{ ...btnStyle, flex: 1, padding: '9px' }}>✎ Save Adjusted</button>
+                      <button onClick={() => handleReview(r, 'approve')} style={{ ...btnStyle, background: '#10b981', flex: 1, padding: '9px' }}>✅ Approve ({r.SelfRating})</button>
+                      <button onClick={() => handleReview(r, 'adjust')} style={{ ...btnStyle, flex: 1, padding: '9px', background: chosen < 4 ? '#ef4444' : ACCENT }}>{chosen < 4 ? '↩ Send for redo' : '✎ Save'}</button>
                     </div>
                   </div>
                 );
               })}
             </div>
+          )}
+
+          {/* Already reviewed — kept visible and editable in case of a mistake */}
+          {reviewedAssessments.length > 0 && (
+            <>
+              <h3 style={{ margin: '28px 0 12px', color: '#1e293b', fontSize: '15px', fontWeight: '700' }}>Reviewed ({reviewedAssessments.length})</h3>
+              <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr>{['Employee', 'Course', 'Rating', 'Status', 'Change rating'].map(h => (
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', background: '#fffbeb', color: '#374151', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}</tr></thead>
+                    <tbody>
+                      {reviewedAssessments.map(r => {
+                        const edit = reviewEdits[r.Id] || {};
+                        const meta = r.AssessmentState === 'Approved'
+                          ? { bg: '#d1fae5', color: '#065f46', text: 'Approved' }
+                          : r.AssessmentState === 'Remediation'
+                            ? { bg: '#fee2e2', color: '#991b1b', text: 'Redo required' }
+                            : { bg: '#dbeafe', color: '#1e40af', text: 'Redo completed' };
+                        return (
+                          <tr key={r.Id}>
+                            <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#374151' }}>{(r.EmployeeID || '').split('@')[0]}</td>
+                            <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#374151' }}>{r.Title}</td>
+                            <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#374151', fontWeight: '600' }}>{r.ManagerRating ?? r.SelfRating}/5</td>
+                            <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
+                              <span style={{ background: meta.bg, color: meta.color, padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>{meta.text}</span>
+                            </td>
+                            <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                <select style={{ ...inputStyle, width: 'auto', padding: '5px 8px' }} value={edit.rating ?? (r.ManagerRating ?? r.SelfRating)} onChange={e => setReviewEdits(p => ({ ...p, [r.Id]: { ...edit, rating: e.target.value } }))}>
+                                  {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                                </select>
+                                <button onClick={() => applyReview(r, edit.rating ?? (r.ManagerRating ?? r.SelfRating), edit.comment)} style={{ ...btnStyle, padding: '6px 12px', fontSize: '13px' }}>Update</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
