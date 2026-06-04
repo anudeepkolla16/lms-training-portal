@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults, getOrgRoles, createOrgRole, deleteOrgRole, getAllUserProfiles, upsertUserProfile, notifyCourseAssigned, sendCompletionReminders, deleteEnrollment, upsertJobDescription, seedJobDescriptions, jdTitleFor } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults, getOrgRoles, createOrgRole, deleteOrgRole, getAllUserProfiles, upsertUserProfile, notifyCourseAssigned, sendCompletionReminders, deleteEnrollment, upsertJobDescription, seedJobDescriptions, jdTitleFor, isJdPlaceholder } from '../services/sharePointAPI';
 import { downloadCSV } from '../utils/csv';
 import BulkUpload from './BulkUpload';
 
@@ -809,9 +809,11 @@ const AdminDashboard = ({ accessToken, user }) => {
                   <tr><td colSpan={4} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No job-roles yet. Add some →</td></tr>
                 ) : orgRoles.map(r => {
                   const jd = jdForRole(r.Title);
-                  const draftVal = jdDrafts[r.Title] ?? (jd?.CourseMaterials || '');
-                  const dirty = jdDrafts[r.Title] !== undefined && (jdDrafts[r.Title] || '') !== (jd?.CourseMaterials || '');
-                  const assigned = jd && jd.CourseMaterials;
+                  const placeholder = jd && isJdPlaceholder(jd.CourseMaterials);
+                  const realUrl = jd && jd.CourseMaterials && !placeholder ? jd.CourseMaterials : '';
+                  const draftVal = jdDrafts[r.Title] ?? realUrl;
+                  const dirty = jdDrafts[r.Title] !== undefined && (jdDrafts[r.Title] || '') !== realUrl;
+                  const assigned = !!realUrl;
                   return (
                   <tr key={r.Id}>
                     <td style={tdStyle}><strong>{r.Title}</strong></td>
@@ -826,8 +828,11 @@ const AdminDashboard = ({ accessToken, user }) => {
                         />
                         <button onClick={() => handleSaveJD(r)} disabled={!dirty && !!jd} style={{ background: (dirty || !jd) ? ACCENT : '#e2e8f0', color: (dirty || !jd) ? 'white' : '#94a3b8', padding: '7px 12px', border: 'none', borderRadius: '6px', cursor: (dirty || !jd) ? 'pointer' : 'default', fontSize: '13px', fontWeight: '600' }}>Save</button>
                       </div>
-                      <span style={{ fontSize: '11px', color: assigned ? '#059669' : '#b45309' }}>
-                        {assigned ? '✓ Assigned as mandatory read' : jd ? '⚠ JD entry exists — add a URL to assign it' : 'No JD yet'}
+                      <span style={{ fontSize: '11px', color: assigned ? '#059669' : placeholder ? '#2563eb' : '#b45309' }}>
+                        {assigned ? '✓ Real document assigned as mandatory read'
+                          : placeholder ? '⏳ Placeholder assigned (auto) — paste the real document URL'
+                          : jd ? '⚠ JD entry exists — add a URL to assign it'
+                          : 'No JD yet'}
                       </span>
                     </td>
                     <td style={tdStyle}>

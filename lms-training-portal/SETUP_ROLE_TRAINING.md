@@ -53,6 +53,17 @@ Admins can add/delete these from **Admin Dashboard → Org Roles (JD)**.
 | `AssessmentDate` | Date and Time | Set automatically on submit. |
 | `ReviewDate` | Date and Time | Set automatically on manager action. |
 
+## 2b. New list: `JD Acknowledgements` (signed JD sign-offs)
+Records each employee's signed acknowledgement of their role's job description. If this list
+doesn't exist the app degrades gracefully (the JD still completes; the signature just isn't stored).
+| Column | Type | Notes |
+|---|---|---|
+| `Title` | Single line text | JD course title (`JD: <Role>`). |
+| `Role` | Single line text | The job-role. |
+| `EmployeeID` | Single line text | Employee email. |
+| `Signature` | Single line text | Typed full name. |
+| `AcknowledgedDate` | Date and Time | Set automatically on acknowledgement. |
+
 ## 3. Add columns to existing list: `UserRoles`
 (`Title` = email and `Role` = access-role already exist.)
 | Column | Type | Notes |
@@ -113,9 +124,10 @@ best-effort — if it fails, the assessment is still saved and the manager still
 ## Job Descriptions (mandatory read per role)
 Each job-role can have a **JD document** that every employee in that role must read & acknowledge.
 
-- In **Admin → Org Roles (JD)**, click **📄 Create JD for all roles** to seed a JD entry per role, then paste a **document URL** for each (SharePoint/PDF link) and **Save**. (Or set a single role's URL directly.)
-- Behind the scenes a JD is a mandatory document course named **`JD: <Role>`** (targeted by job-role only). It **auto-assigns** to everyone in that role once it has a URL.
-- Employees see it with a **📄 Job Description** badge — **no self-assessment, no quiz**. They **Read** it, then **✅ Acknowledge & Complete**.
+- In **Admin → Org Roles (JD)**, click **📄 Create JD for all roles**. This seeds a JD entry per role **with a placeholder document**, so JDs **auto-assign immediately** ("by default"). Each row then shows `⏳ Placeholder assigned — paste the real document URL`; paste the SharePoint/PDF link and **Save** to replace it (status → `✓ Real document assigned`).
+- Behind the scenes a JD is a mandatory document course named **`JD: <Role>`** (targeted by job-role only). It **auto-assigns** to everyone in that role.
+- Employees see it with a **📄 Job Description** badge — **no self-assessment, no quiz**. They **Read/View** it, then **✅ Acknowledge & Complete**, which requires a **typed-name signature + confirmation checkbox**. While the real document is pending, the reader shows a "document being finalised" notice instead of a broken link.
+- Each acknowledgement is recorded in the **`JD Acknowledgements`** list (employee, role, signature, timestamp) — beyond the enrollment completion date. The employee's card shows `✍ Acknowledged <date>`.
 - JDs are excluded from the self-enroll **Browse All Courses** catalog.
 
 ## How the workflow runs
