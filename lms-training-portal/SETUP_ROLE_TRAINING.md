@@ -128,6 +128,7 @@ Each job-role can have a **JD document** that every employee in that role must r
 - Behind the scenes a JD is a mandatory document course named **`JD: <Role>`** (targeted by job-role only). It **auto-assigns** to everyone in that role.
 - Employees see it with a **📄 Job Description** badge — **no self-assessment, no quiz**. They **Read/View** it, then **✅ Acknowledge & Complete**, which requires a **typed-name signature + confirmation checkbox**. While the real document is pending, the reader shows a "document being finalised" notice instead of a broken link.
 - Each acknowledgement is recorded in the **`JD Acknowledgements`** list (employee, role, signature, timestamp) — beyond the enrollment completion date. The employee's card shows `✍ Acknowledged <date>`.
+- **HR Dashboard → JD Sign-offs** shows a compliance report: every employee whose role has a JD, whether they've signed (with signature + date), a compliance %, department filter, and CSV export.
 - JDs are excluded from the self-enroll **Browse All Courses** catalog.
 
 ## How the workflow runs
