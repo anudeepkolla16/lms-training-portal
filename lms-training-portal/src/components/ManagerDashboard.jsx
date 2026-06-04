@@ -173,6 +173,12 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
   const departmentOptions = [...new Set(scopedEnrollments.map(e => e.Department).filter(Boolean))].sort();
   const filteredEnrollments = dept ? scopedEnrollments.filter(e => e.Department === dept) : scopedEnrollments;
 
+  // Employees this user may assign to: their reports (Manager) or department (HOD)
+  const assignableEmployees = [...new Set([
+    ...[...scopedEmails],
+    ...scopedEnrollments.map(e => (e.EmployeeID || '').toLowerCase()).filter(Boolean),
+  ])].sort();
+
   // Build per-employee profile
   const employeeMap = {};
   filteredEnrollments.forEach(e => {
@@ -421,8 +427,11 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
           <h3 style={{ margin: '0 0 20px', color: '#1e293b', fontSize: '16px', fontWeight: '700' }}>Assign Course to Employee</h3>
           <form onSubmit={handleAssign}>
             <div style={{ marginBottom: '14px' }}>
-              <label style={labelStyle}>Employee Email *</label>
-              <input type="email" style={inputStyle} value={assignForm.EmployeeEmail} onChange={e => setAssignForm(f => ({ ...f, EmployeeEmail: e.target.value }))} required placeholder="employee@company.com" />
+              <label style={labelStyle}>Employee * <span style={{ fontWeight: '400', color: '#94a3b8' }}>({isHOD ? 'your department' : 'your reports'})</span></label>
+              <select style={inputStyle} value={assignForm.EmployeeEmail} onChange={e => setAssignForm(f => ({ ...f, EmployeeEmail: e.target.value }))} required>
+                <option value="">{assignableEmployees.length ? 'Select an employee' : (isHOD ? 'No one in your department yet' : 'You have no direct reports yet')}</option>
+                {assignableEmployees.map(em => <option key={em} value={em}>{em}</option>)}
+              </select>
             </div>
             <div style={{ marginBottom: '14px' }}>
               <label style={labelStyle}>Course *</label>
