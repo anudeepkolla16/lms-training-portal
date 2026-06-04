@@ -63,6 +63,11 @@ Admins can add/delete these from **Admin Dashboard → Org Roles (JD)**.
 
 Admins set these from **Admin Dashboard → Employee Profiles**.
 
+## 3b. Add column to existing list: `Employee Enrollments`
+| Column | Type | Notes |
+|---|---|---|
+| `CompletedDate` | Date and Time | Set automatically when a course is marked Completed; shown in the Admin "Completed" column. Optional — if absent, completion still works but no date is recorded. |
+
 ## 4. Add columns to existing list: `Courses`
 | Column | Type | Notes |
 |---|---|---|

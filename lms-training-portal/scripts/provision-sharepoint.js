@@ -150,6 +150,10 @@ async function ensureColumns(siteId, listName, columns) {
     console.log(`• ensuring columns on "Courses"`);
     await ensureColumns(siteId, 'Courses', [text('JobRoles'), text('Departments'), boolean('Mandatory')]);
 
+    // 5. Column on existing Employee Enrollments
+    console.log(`• ensuring columns on "Employee Enrollments"`);
+    await ensureColumns(siteId, 'Employee Enrollments', [dateTime('CompletedDate')]);
+
     console.log('\n✅ Provisioning complete.');
   } catch (e) {
     console.error(`\n❌ Failed: ${e.message}`);

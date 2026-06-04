@@ -129,11 +129,12 @@ export const getAllEnrollments = async (token) => {
 export const updateEnrollmentStatus = async (token, enrollmentId, status) => {
   try {
     const siteId = await getSiteId(token);
-    await axios.patch(
-      `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items/${enrollmentId}`,
-      { fields: { Status: status } },
-      h(token)
-    );
+    const base = `${GRAPH}/sites/${siteId}/lists/Employee%20Enrollments/items/${enrollmentId}`;
+    await axios.patch(base, { fields: { Status: status } }, h(token));
+    // Best-effort completion timestamp — ignored if the CompletedDate column doesn't exist yet
+    try {
+      await axios.patch(base, { fields: { CompletedDate: status === 'Completed' ? new Date().toISOString() : null } }, h(token));
+    } catch (e) { /* column optional */ }
   } catch (e) { console.error('updateEnrollmentStatus error:', e?.response?.data || e.message); throw e; }
 };
 

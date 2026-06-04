@@ -180,8 +180,8 @@ const AdminDashboard = ({ accessToken, user }) => {
   // CSV exports (respect the active department filter)
   const exportEnrollments = () => downloadCSV(
     `enrollments-${new Date().toISOString().slice(0, 10)}.csv`,
-    ['Employee', 'Course', 'Department', 'Status', 'Due Date'],
-    filteredEnrollments.map(e => [e.EmployeeID || '', e.Title || e.CourseTitle || '', e.Department || '', e.Status || 'Not Started', e.DueDate ? new Date(e.DueDate).toLocaleDateString() : ''])
+    ['Employee', 'Course', 'Department', 'Status', 'Completed Date', 'Due Date'],
+    filteredEnrollments.map(e => [e.EmployeeID || '', e.Title || e.CourseTitle || '', e.Department || '', e.Status || 'Not Started', (e.Status === 'Completed' && e.CompletedDate) ? new Date(e.CompletedDate).toLocaleDateString() : '', e.DueDate ? new Date(e.DueDate).toLocaleDateString() : ''])
   );
   const exportProfiles = () => downloadCSV(
     `employees-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -686,14 +686,14 @@ const AdminDashboard = ({ accessToken, user }) => {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Employee', 'Course', 'Department', 'Status', 'Due Date', 'Actions'].map(h => (
+                  {['Employee', 'Course', 'Department', 'Status', 'Completed', 'Due Date', 'Actions'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filteredEnrollments.length === 0 ? (
-                  <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No enrollments found.</td></tr>
+                  <tr><td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No enrollments found.</td></tr>
                 ) : (
                   filteredEnrollments.map(e => (
                     <tr key={e.Id}>
@@ -701,6 +701,7 @@ const AdminDashboard = ({ accessToken, user }) => {
                       <td style={tdStyle}>{e.Title || e.CourseTitle || '—'}</td>
                       <td style={tdStyle}>{e.Department || '—'}</td>
                       <td style={tdStyle}><StatusBadge status={e.Status} /></td>
+                      <td style={tdStyle}>{e.Status === 'Completed' && e.CompletedDate ? new Date(e.CompletedDate).toLocaleDateString() : '—'}</td>
                       <td style={tdStyle}>{e.DueDate ? new Date(e.DueDate).toLocaleDateString() : '—'}</td>
                       <td style={tdStyle}>
                         <button onClick={() => handleDeleteEnrollment(e)} title="Remove enrollment" style={{
