@@ -490,7 +490,7 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
       {activeTab === 'reviews' && (
         <div>
           <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 16px' }}>
-            Approve to keep the employee's rating, or set a lower one — <strong style={{ color: '#991b1b' }}>a final rating below 4 sends the course back for redo</strong> and emails the employee. Reviewed items stay below and can be changed if you make a mistake.
+            These employees say they <strong>already know the topic and want to skip</strong>. Approve to mark the course complete (skip), or <strong style={{ color: '#991b1b' }}>set a rating below 4 to require them to take the training</strong>. The employee is emailed either way. Reviewed items stay below and can be changed.
           </p>
 
           <h3 style={{ margin: '0 0 12px', color: '#1e293b', fontSize: '15px', fontWeight: '700' }}>Pending ({pendingReviews.length})</h3>
@@ -521,8 +521,8 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
                     <input style={{ ...inputStyle, marginBottom: '12px' }} placeholder="Comment (optional)" value={edit.comment || ''} onChange={e => setReviewEdits(p => ({ ...p, [r.Id]: { ...edit, comment: e.target.value } }))} />
 
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => handleReview(r, 'approve')} style={{ ...btnStyle, background: '#10b981', flex: 1, padding: '9px' }}>✅ Approve ({r.SelfRating})</button>
-                      <button onClick={() => handleReview(r, 'adjust')} style={{ ...btnStyle, flex: 1, padding: '9px', background: chosen < 4 ? '#ef4444' : ACCENT }}>{chosen < 4 ? '↩ Send for redo' : '✎ Save'}</button>
+                      <button onClick={() => handleReview(r, 'approve')} style={{ ...btnStyle, background: '#10b981', flex: 1, padding: '9px' }}>✅ Approve skip ({r.SelfRating})</button>
+                      <button onClick={() => handleReview(r, 'adjust')} style={{ ...btnStyle, flex: 1, padding: '9px', background: chosen < 4 ? '#ef4444' : ACCENT }}>{chosen < 4 ? '📚 Require training' : '✎ Save'}</button>
                     </div>
                   </div>
                 );
@@ -544,10 +544,10 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
                       {reviewedAssessments.map(r => {
                         const edit = reviewEdits[r.Id] || {};
                         const meta = r.AssessmentState === 'Approved'
-                          ? { bg: '#d1fae5', color: '#065f46', text: 'Approved' }
+                          ? { bg: '#d1fae5', color: '#065f46', text: 'Skipped (approved)' }
                           : r.AssessmentState === 'Remediation'
-                            ? { bg: '#fee2e2', color: '#991b1b', text: 'Redo required' }
-                            : { bg: '#dbeafe', color: '#1e40af', text: 'Redo completed' };
+                            ? { bg: '#fef3c7', color: '#92400e', text: 'Training required' }
+                            : { bg: '#dbeafe', color: '#1e40af', text: 'Completed (trained)' };
                         return (
                           <tr key={r.Id}>
                             <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#374151' }}>{(r.EmployeeID || '').split('@')[0]}</td>
