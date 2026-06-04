@@ -82,6 +82,14 @@ export const matchesCsv = (field, value) => {
 // SharePoint Yes/No can come back as true/'true'/1 — normalize to a boolean
 export const isTruthy = (v) => v === true || v === 'true' || v === 1 || v === '1' || v === 'Yes' || v === 'yes';
 
+// ---- Job Descriptions ----
+// A JD is modelled as a mandatory "read & acknowledge" document Course named `JD: <Role>`,
+// tagged with JobRoles=<Role> so it auto-assigns to everyone in that role. No quiz / self-assessment.
+export const JD_PREFIX = 'JD: ';
+export const isJobDescription = (title) => String(title || '').trim().toLowerCase().startsWith('jd:');
+export const jdTitleFor = (role) => `${JD_PREFIX}${String(role || '').trim()}`;
+export const roleFromJdTitle = (title) => String(title || '').trim().replace(/^jd:\s*/i, '');
+
 export const getMyEnrollments = async (token, userEmail) => {
   try {
     const siteId = await getSiteId(token);
@@ -302,6 +310,35 @@ export const deleteOrgRole = async (token, id) => {
   } catch (e) { console.error('deleteOrgRole error:', e?.response?.data || e.message); throw e; }
 };
 
+// Create or update the `JD: <Role>` document course for a single role.
+export const upsertJobDescription = async (token, { role, department = '', url = '', description = '' }, existingCourses = []) => {
+  const title = jdTitleFor(role);
+  const existing = (existingCourses || []).find(c => (c.Title || '').toLowerCase() === title.toLowerCase());
+  const data = {
+    Title: title,
+    Department: department, // display/category only
+    Departments: '',        // targeting is by job-role only — don't also gate on department
+    JobRoles: role,
+    Mandatory: true,
+    CourseMaterials: url,
+    Description: description || `Official job description for ${role}. Please read and acknowledge.`,
+  };
+  if (existing?.Id) { await updateCourse(token, existing.Id, data); return { ...existing, ...data }; }
+  return createCourse(token, data);
+};
+
+// Seed a JD entry for every role that doesn't have one yet. Returns count created.
+export const seedJobDescriptions = async (token, roles = [], existingCourses = []) => {
+  let created = 0;
+  for (const r of roles) {
+    const title = jdTitleFor(r.Title);
+    if ((existingCourses || []).some(c => (c.Title || '').toLowerCase() === title.toLowerCase())) continue;
+    try { await upsertJobDescription(token, { role: r.Title, department: r.Department || '' }, existingCourses); created++; }
+    catch (e) { /* logged in createCourse */ }
+  }
+  return created;
+};
+
 // ---- Self assessments (rating + manager review workflow) ----
 export const getMyAssessments = async (token, userEmail) => {
   try {
@@ -468,7 +505,9 @@ export const autoAssignMandatory = async (token, email, profile, courses, existi
     isTruthy(c.Mandatory) &&
     matchesCsv(c.JobRoles, profile.jobRole) &&
     matchesCsv(c.Departments, profile.department) &&
-    !enrolledTitles.has((c.Title || '').toLowerCase())
+    !enrolledTitles.has((c.Title || '').toLowerCase()) &&
+    // Don't assign a JD that has no document attached yet — it couldn't be read/completed
+    (!isJobDescription(c.Title) || !!c.CourseMaterials)
   );
   let created = 0;
   for (const c of toEnroll) {

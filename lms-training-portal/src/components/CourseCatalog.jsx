@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getCourses, getOrgRoles, enrollEmployee, matchesCsv, isTruthy } from '../services/sharePointAPI';
+import { getCourses, getOrgRoles, enrollEmployee, matchesCsv, isTruthy, isJobDescription } from '../services/sharePointAPI';
 
 // Org-wide course catalog. Every employee sees ALL courses, can filter by job-role /
 // department, sees which are recommended for their role, and can self-enroll.
@@ -17,7 +17,7 @@ const CourseCatalog = ({ accessToken, userEmail, userProfile, enrolledTitles, on
     const load = async () => {
       setLoading(true);
       const [c, r] = await Promise.all([getCourses(accessToken), getOrgRoles(accessToken)]);
-      setCourses(c);
+      setCourses(c.filter(x => !isJobDescription(x.Title))); // JDs are auto-assigned by role, not self-enrolled
       setOrgRoles(r);
       setLoading(false);
     };
