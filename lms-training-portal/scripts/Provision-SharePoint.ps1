@@ -63,4 +63,7 @@ Ensure-Field "Courses" "JobRoles"    "Text"
 Ensure-Field "Courses" "Departments" "Text"
 Ensure-Field "Courses" "Mandatory"   "Boolean"
 
+# 5. Column on existing Employee Enrollments
+Ensure-Field "Employee Enrollments" "CompletedDate" "DateTime"
+
 Write-Host "`n✅ Provisioning complete."
