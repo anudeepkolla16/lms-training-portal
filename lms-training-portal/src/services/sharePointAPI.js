@@ -89,6 +89,10 @@ export const JD_PREFIX = 'JD: ';
 export const isJobDescription = (title) => String(title || '').trim().toLowerCase().startsWith('jd:');
 export const jdTitleFor = (role) => `${JD_PREFIX}${String(role || '').trim()}`;
 export const roleFromJdTitle = (title) => String(title || '').trim().replace(/^jd:\s*/i, '');
+// A seeded JD with no real document yet carries this placeholder so it still auto-assigns
+// (the reader shows a "document pending" notice instead of a broken link).
+export const JD_PLACEHOLDER = 'placeholder';
+export const isJdPlaceholder = (url) => String(url || '').trim().toLowerCase() === JD_PLACEHOLDER;
 
 export const getMyEnrollments = async (token, userEmail) => {
   try {
@@ -327,16 +331,60 @@ export const upsertJobDescription = async (token, { role, department = '', url =
   return createCourse(token, data);
 };
 
-// Seed a JD entry for every role that doesn't have one yet. Returns count created.
+// Seed a JD entry for every role that doesn't have one yet. New entries get a placeholder
+// document so they auto-assign immediately (admin replaces the URL with the real doc later).
+// Returns count created.
 export const seedJobDescriptions = async (token, roles = [], existingCourses = []) => {
   let created = 0;
   for (const r of roles) {
     const title = jdTitleFor(r.Title);
     if ((existingCourses || []).some(c => (c.Title || '').toLowerCase() === title.toLowerCase())) continue;
-    try { await upsertJobDescription(token, { role: r.Title, department: r.Department || '' }, existingCourses); created++; }
+    try { await upsertJobDescription(token, { role: r.Title, department: r.Department || '', url: JD_PLACEHOLDER }, existingCourses); created++; }
     catch (e) { /* logged in createCourse */ }
   }
   return created;
+};
+
+// ---- JD acknowledgements (signature + timestamp record, beyond the enrollment completion date) ----
+export const saveJdAcknowledgement = async (token, { jdTitle, role, employee, signature }) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.post(
+      `${GRAPH}/sites/${siteId}/lists/JD%20Acknowledgements/items`,
+      { fields: {
+        Title: jdTitle,
+        Role: role || roleFromJdTitle(jdTitle),
+        EmployeeID: String(employee || '').toLowerCase(),
+        Signature: signature || '',
+        AcknowledgedDate: new Date().toISOString(),
+      } },
+      h(token)
+    );
+    return res.data;
+  } catch (e) { console.warn('saveJdAcknowledgement error:', e?.response?.data?.error?.message || e.message); return null; }
+};
+
+export const getMyJdAcknowledgements = async (token, userEmail) => {
+  try {
+    const siteId = await getSiteId(token);
+    const me = (userEmail || '').toLowerCase();
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/JD%20Acknowledgements/items?$expand=fields&$top=5000`,
+      h(token)
+    );
+    return (res.data?.value || []).map(mapItem).filter(x => (x.EmployeeID || '').toLowerCase() === me);
+  } catch (e) { console.warn('getMyJdAcknowledgements:', e?.response?.data?.error?.message || e.message); return []; }
+};
+
+export const getAllJdAcknowledgements = async (token) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/JD%20Acknowledgements/items?$expand=fields&$top=5000`,
+      h(token)
+    );
+    return (res.data?.value || []).map(mapItem);
+  } catch (e) { console.warn('getAllJdAcknowledgements:', e?.response?.data?.error?.message || e.message); return []; }
 };
 
 // ---- Self assessments (rating + manager review workflow) ----

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getMyEnrollments, getCourses, updateEnrollmentStatus, getMyAssessments, autoAssignMandatory, updateAssessment, matchesCsv, isTruthy, isJobDescription } from '../services/sharePointAPI';
+import { getMyEnrollments, getCourses, updateEnrollmentStatus, getMyAssessments, autoAssignMandatory, updateAssessment, matchesCsv, isTruthy, isJobDescription, isJdPlaceholder, saveJdAcknowledgement, getMyJdAcknowledgements } from '../services/sharePointAPI';
 import QuizModal from './QuizModal';
 import SelfAssessmentModal from './SelfAssessmentModal';
+import JdAcknowledgeModal from './JdAcknowledgeModal';
 import CourseCatalog from './CourseCatalog';
 
 const Dashboard = ({ accessToken, user, userProfile }) => {
@@ -13,6 +14,8 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
   const [quizCourse, setQuizCourse] = useState(null);
   const [remediationMode, setRemediationMode] = useState(false);
   const [assessCourse, setAssessCourse] = useState(null);
+  const [jdAckCourse, setJdAckCourse] = useState(null); // JD pending signature/acknowledgement
+  const [jdAcks, setJdAcks] = useState([]);
   const [showCatalog, setShowCatalog] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -34,10 +37,11 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
       setLoading(true);
       setError(null);
       try {
-        let [enrollData, courseData, assessData] = await Promise.all([
+        let [enrollData, courseData, assessData, ackData] = await Promise.all([
           getMyEnrollments(accessToken, userEmail),
           getCourses(accessToken),
           getMyAssessments(accessToken, userEmail),
+          getMyJdAcknowledgements(accessToken, userEmail),
         ]);
         // Auto-assign mandatory role/JD courses once per session, then refresh enrollments
         if (!autoAssignDone.current) {
@@ -47,6 +51,7 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
         }
         setEnrollments(mergeEnrollments(enrollData, courseData));
         setAssessments(assessData);
+        setJdAcks(ackData);
       } catch (err) {
         setError('Failed to load courses. Please try again.');
       } finally {
@@ -58,13 +63,15 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
 
   const reload = async () => {
     try {
-      const [enrollData, courseData, assessData] = await Promise.all([
+      const [enrollData, courseData, assessData, ackData] = await Promise.all([
         getMyEnrollments(accessToken, userEmail),
         getCourses(accessToken),
         getMyAssessments(accessToken, userEmail),
+        getMyJdAcknowledgements(accessToken, userEmail),
       ]);
       setEnrollments(mergeEnrollments(enrollData, courseData));
       setAssessments(assessData);
+      setJdAcks(ackData);
     } catch (err) { console.error(err); }
   };
 
@@ -73,6 +80,19 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
       .filter(a => (a.Title || '').toLowerCase() === (title || '').toLowerCase())
       .sort((a, b) => new Date(a.AssessmentDate || a.ReviewDate || 0) - new Date(b.AssessmentDate || b.ReviewDate || 0));
     return matches.length ? matches[matches.length - 1] : null;
+  };
+
+  const ackFor = (title) => jdAcks.find(x => (x.Title || '').toLowerCase() === (title || '').toLowerCase());
+
+  // Record the signed acknowledgement, then mark the JD enrollment complete.
+  const handleJdAcknowledged = async (signature) => {
+    const course = jdAckCourse;
+    if (!course) return;
+    await saveJdAcknowledgement(accessToken, { jdTitle: course.Title, employee: userEmail, signature });
+    setJdAckCourse(null);
+    setShowPDF(false);
+    setSelectedCourse(null);
+    await handleMarkComplete(course.Id); // also reloads (incl. acknowledgements)
   };
 
   const handleMarkComplete = async (enrollmentId) => {
@@ -225,10 +245,12 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
             const state = a?.AssessmentState;
             const isCompleted = e.Status === 'Completed';
             const isJD = isJobDescription(e.Title); // mandatory read-&-acknowledge document, no quiz/self-assessment
+            const jdPlaceholder = isJD && isJdPlaceholder(e.CourseMaterials); // document not uploaded yet
             const pendingReview = state === 'PendingManagerReview';
             const needsTraining = state === 'Remediation'; // self-rated < 4, or manager required training
             const canSelfAssess = !isCompleted && !a && !isJD; // pre-course "do you already know this?" gate
-            const readyToAck = readCourses.has(e.Id) || !e.CourseMaterials; // JD acknowledge unlocks after reading
+            const readyToAck = jdPlaceholder || readCourses.has(e.Id) || !e.CourseMaterials; // unlocks after viewing the JD
+            const jdAck = isCompleted && isJD ? ackFor(e.Title) : null;
             return (
             <div key={e.Id} style={{
               background: 'white', borderRadius: '12px', padding: '20px 24px',
@@ -261,16 +283,21 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
                         background: '#3b82f6', color: 'white', padding: '9px 16px',
                         borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
                       }}>
-                        📄 Read JD
+                        {jdPlaceholder ? '📄 View JD' : '📄 Read JD'}
                       </button>
                     )}
-                    <button onClick={() => handleMarkComplete(e.Id)} disabled={!readyToAck} title={readyToAck ? '' : 'Read the job description first'} style={{
+                    <button onClick={() => setJdAckCourse(e)} disabled={!readyToAck} title={readyToAck ? '' : 'Read the job description first'} style={{
                       background: readyToAck ? '#10b981' : '#d1d5db', color: readyToAck ? 'white' : '#9ca3af',
                       padding: '9px 16px', borderRadius: '8px', border: 'none', cursor: readyToAck ? 'pointer' : 'not-allowed', fontSize: '13px', fontWeight: '600'
                     }}>
                       ✅ Acknowledge & Complete
                     </button>
                   </>
+                )}
+                {jdAck && (
+                  <span style={{ alignSelf: 'center', color: '#059669', fontSize: '12px', fontWeight: '600' }}>
+                    ✍ Acknowledged {new Date(jdAck.AcknowledgedDate).toLocaleDateString()}
+                  </span>
                 )}
                 {canSelfAssess && (
                   <button onClick={() => setAssessCourse(e)} style={{
@@ -320,10 +347,12 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
               {selectedCourse.Duration && <span style={{ color: '#94a3b8', fontSize: '13px', marginLeft: '12px' }}>⏱ {selectedCourse.Duration}</span>}
             </div>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <a href={selectedCourse.CourseMaterials} target="_blank" rel="noopener noreferrer"
-                style={{ background: '#3b82f6', color: 'white', padding: '8px 14px', borderRadius: '7px', textDecoration: 'none', fontSize: '13px', fontWeight: '600' }}>
-                ↗ Open in new tab
-              </a>
+              {!isJdPlaceholder(selectedCourse.CourseMaterials) && (
+                <a href={selectedCourse.CourseMaterials} target="_blank" rel="noopener noreferrer"
+                  style={{ background: '#3b82f6', color: 'white', padding: '8px 14px', borderRadius: '7px', textDecoration: 'none', fontSize: '13px', fontWeight: '600' }}>
+                  ↗ Open in new tab
+                </a>
+              )}
               {!readCourses.has(selectedCourse.Id) && (
                 <button onClick={() => { markAsRead(selectedCourse.Id); setShowPDF(false); }}
                   style={{ background: '#10b981', color: 'white', padding: '8px 14px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
@@ -338,7 +367,7 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
                 }
                 if (isJobDescription(selectedCourse.Title)) {
                   return (
-                    <button onClick={() => { handleMarkComplete(selectedCourse.Id); setShowPDF(false); setSelectedCourse(null); }}
+                    <button onClick={() => setJdAckCourse(selectedCourse)}
                       style={{ background: '#10b981', color: 'white', padding: '8px 14px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
                       ✅ Acknowledge & Complete
                     </button>
@@ -362,20 +391,33 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
           {/* PDF Viewer */}
           <div style={{ flex: 1, background: '#525659', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px', padding: '40px' }}>
             <div style={{ fontSize: '80px' }}>📄</div>
-            <div style={{ textAlign: 'center' }}>
-              <h3 style={{ color: 'white', margin: '0 0 8px', fontSize: '20px' }}>{selectedCourse.Title}</h3>
-              <p style={{ color: '#94a3b8', margin: '0 0 24px', fontSize: '14px' }}>
-                SharePoint PDFs must be opened in a new tab.<br/>Read the material, then come back and take the quiz.
-              </p>
-              <a href={selectedCourse.CourseMaterials} target="_blank" rel="noopener noreferrer"
-                style={{ display: 'inline-block', background: '#3b82f6', color: 'white', padding: '14px 28px', borderRadius: '10px', textDecoration: 'none', fontSize: '16px', fontWeight: '700', marginBottom: '16px' }}>
-                📖 Open PDF in New Tab
-              </a>
-              <br />
-              <p style={{ color: '#64748b', fontSize: '13px', margin: '12px 0 0' }}>
-                After reading, click <strong style={{ color: '#10b981' }}>"🎯 Take Quiz"</strong> above ↑
-              </p>
-            </div>
+            {isJdPlaceholder(selectedCourse.CourseMaterials) ? (
+              <div style={{ textAlign: 'center', maxWidth: '520px' }}>
+                <h3 style={{ color: 'white', margin: '0 0 8px', fontSize: '20px' }}>{selectedCourse.Title}</h3>
+                <p style={{ color: '#cbd5e1', margin: '0 0 8px', fontSize: '15px' }}>
+                  The formal job-description document for this role is being finalised.
+                </p>
+                <p style={{ color: '#94a3b8', margin: '0 0 24px', fontSize: '14px', lineHeight: 1.6 }}>
+                  Please review your role's responsibilities and expectations with your manager. When you click
+                  <strong style={{ color: '#10b981' }}> "✅ Acknowledge & Complete"</strong> above, you confirm you've done so.
+                </p>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center' }}>
+                <h3 style={{ color: 'white', margin: '0 0 8px', fontSize: '20px' }}>{selectedCourse.Title}</h3>
+                <p style={{ color: '#94a3b8', margin: '0 0 24px', fontSize: '14px' }}>
+                  SharePoint PDFs must be opened in a new tab.<br/>Read the material, then come back and {isJobDescription(selectedCourse.Title) ? 'acknowledge it' : 'take the quiz'}.
+                </p>
+                <a href={selectedCourse.CourseMaterials} target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'inline-block', background: '#3b82f6', color: 'white', padding: '14px 28px', borderRadius: '10px', textDecoration: 'none', fontSize: '16px', fontWeight: '700', marginBottom: '16px' }}>
+                  📖 Open in New Tab
+                </a>
+                <br />
+                <p style={{ color: '#64748b', fontSize: '13px', margin: '12px 0 0' }}>
+                  After reading, click <strong style={{ color: '#10b981' }}>{isJobDescription(selectedCourse.Title) ? '"✅ Acknowledge & Complete"' : '"🎯 Take Quiz"'}</strong> above ↑
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -419,24 +461,28 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
               const canTakeQuiz = !selectedCourse.CourseMaterials || readCourses.has(selectedCourse.Id);
               return (
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  {isJD && !isCompleted && (
+                  {isJD && !isCompleted && (() => {
+                    const jdPlaceholder = isJdPlaceholder(selectedCourse.CourseMaterials);
+                    const readyToAck = jdPlaceholder || canTakeQuiz;
+                    return (
                     <>
                       {selectedCourse.CourseMaterials && (
                         <button onClick={() => { markAsRead(selectedCourse.Id); setShowPDF(true); }} style={{
                           background: '#3b82f6', color: 'white', padding: '11px 18px',
                           borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600', flex: 1
                         }}>
-                          📄 Read Job Description
+                          {jdPlaceholder ? '📄 View Job Description' : '📄 Read Job Description'}
                         </button>
                       )}
-                      <button onClick={() => { handleMarkComplete(selectedCourse.Id); setSelectedCourse(null); }} disabled={!canTakeQuiz} title={canTakeQuiz ? '' : 'Read the job description first'} style={{
-                        background: canTakeQuiz ? '#10b981' : '#d1d5db', color: canTakeQuiz ? 'white' : '#9ca3af',
-                        padding: '11px 18px', borderRadius: '8px', border: 'none', cursor: canTakeQuiz ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: '700', flex: 1
+                      <button onClick={() => setJdAckCourse(selectedCourse)} disabled={!readyToAck} title={readyToAck ? '' : 'Read the job description first'} style={{
+                        background: readyToAck ? '#10b981' : '#d1d5db', color: readyToAck ? 'white' : '#9ca3af',
+                        padding: '11px 18px', borderRadius: '8px', border: 'none', cursor: readyToAck ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: '700', flex: 1
                       }}>
                         ✅ Acknowledge & Complete
                       </button>
                     </>
-                  )}
+                    );
+                  })()}
                   {canSelfAssess && (
                     <button onClick={() => { setSelectedCourse(null); setAssessCourse(selectedCourse); }} style={{
                       background: '#8b5cf6', color: 'white', padding: '11px 18px',
@@ -509,6 +555,15 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
           existingAssessment={assessmentFor(assessCourse.Title)}
           onClose={() => setAssessCourse(null)}
           onSubmitted={handleAssessmentSubmitted}
+        />
+      )}
+
+      {jdAckCourse && (
+        <JdAcknowledgeModal
+          course={jdAckCourse}
+          defaultName={userName !== 'there' ? userName : (user.name || '')}
+          onConfirm={handleJdAcknowledged}
+          onClose={() => setJdAckCourse(null)}
         />
       )}
     </div>
