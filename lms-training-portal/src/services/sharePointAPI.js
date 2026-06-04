@@ -382,6 +382,25 @@ export const notifyCourseAssigned = async (token, to, courseTitle, dueDate) => {
   });
 };
 
+// Email an employee the outcome of their manager's review of a self-assessment.
+export const notifyAssessmentReviewed = async (token, to, courseTitle, rating, needsRedo) => {
+  if (!to) return false;
+  const portal = PORTAL_URL();
+  return sendMail(token, {
+    to,
+    subject: needsRedo ? `Action needed: redo training "${courseTitle}"` : `Training rating approved: ${courseTitle}`,
+    html: needsRedo
+      ? `<p>Hi,</p>
+         <p>Your manager reviewed your self-assessment for <strong>${courseTitle}</strong> and set the rating to <strong>${rating}/5</strong>.</p>
+         <p>Because it is below 4, please <strong>redo the training and pass the quiz</strong> in the Training Portal to complete it.</p>
+         ${portal ? `<p><a href="${portal}">Open Training Portal</a></p>` : ''}
+         <p>— Training Portal</p>`
+      : `<p>Hi,</p>
+         <p>Your manager approved your self-assessment for <strong>${courseTitle}</strong> with a rating of <strong>${rating}/5</strong>. No further action needed.</p>
+         <p>— Training Portal</p>`,
+  });
+};
+
 // Send one reminder email per employee listing their incomplete courses (overdue flagged).
 // Returns { sent, employees }. Best-effort per email.
 export const sendCompletionReminders = async (token, enrollments) => {

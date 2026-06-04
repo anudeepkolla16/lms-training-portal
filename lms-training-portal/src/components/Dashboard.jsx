@@ -107,12 +107,16 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
   };
 
   const handleAssessmentSubmitted = async (nextState) => {
+    const course = assessCourse;
     setAssessCourse(null);
+    // A low rating reopens the course (no longer "Completed") and sends them into redo + quiz
+    if (nextState === 'Remediation' && course?.Id) {
+      try { await updateEnrollmentStatus(accessToken, course.Id, 'In Progress'); } catch (e) { /* non-blocking */ }
+    }
     await reload();
-    // A low rating sends the employee straight into redo + quiz
-    if (nextState === 'Remediation' && assessCourse) {
-      setSelectedCourse({ ...assessCourse });
-      setShowPDF(!!assessCourse.CourseMaterials);
+    if (nextState === 'Remediation' && course) {
+      setSelectedCourse({ ...course, Status: 'In Progress' });
+      setShowPDF(!!course.CourseMaterials);
     }
   };
 
