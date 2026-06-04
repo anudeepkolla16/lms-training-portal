@@ -38,10 +38,10 @@ const SelfAssessmentModal = ({ course, userEmail, managerEmail, accessToken, exi
         const portal = typeof window !== 'undefined' ? window.location.origin : '';
         sendMail(accessToken, {
           to: managerEmail,
-          subject: `Training review needed: ${who} — ${course.Title}`,
+          subject: `Skip request: ${who} — ${course.Title}`,
           html: `<p>Hi,</p>
-            <p><strong>${userEmail}</strong> completed <strong>${course.Title}</strong> and self-rated it <strong>${rating}/5</strong>${comment ? ` with the note: <em>“${comment}”</em>` : ''}.</p>
-            <p>This needs your review. Open the Training Portal and go to <strong>Assessment Reviews</strong> to approve or adjust the rating.</p>
+            <p><strong>${userEmail}</strong> says they already know <strong>${course.Title}</strong> and self-rated <strong>${rating}/5</strong>${comment ? ` with the note: <em>“${comment}”</em>` : ''}.</p>
+            <p>Open the Training Portal → <strong>Assessment Reviews</strong> to <strong>approve</strong> (marks the course complete, they skip it) or set a lower rating to <strong>require the training</strong>.</p>
             ${portal ? `<p><a href="${portal}">Open Training Portal</a></p>` : ''}
             <p>— Training Portal</p>`,
         });
@@ -60,7 +60,7 @@ const SelfAssessmentModal = ({ course, userEmail, managerEmail, accessToken, exi
         <p style={{ margin: '0 0 20px', color: '#64748b', fontSize: '14px' }}>{course.Title}</p>
 
         <p style={{ margin: '0 0 12px', color: '#374151', fontSize: '14px', fontWeight: '600' }}>
-          How confident are you with this training? (1 = low, 5 = high)
+          How well do you already know this topic? (1 = not at all, 5 = expert)
         </p>
 
         {/* Rating selector */}
@@ -86,9 +86,9 @@ const SelfAssessmentModal = ({ course, userEmail, managerEmail, accessToken, exi
           padding: '12px 16px', borderRadius: '8px', marginBottom: '18px', fontSize: '13px'
         }}>
           {rating >= 4
-            ? '👍 A rating of 4 or 5 will be sent to your manager for review. They may confirm or adjust it.'
+            ? '👍 You\'re saying you already know this. It goes to your manager to confirm — if approved, you can skip the course. (No manager set? It\'s auto-approved.)'
             : rating > 0
-              ? '⚠️ A rating below 4 means you will need to redo this training and pass a quiz.'
+              ? '📚 A rating below 4 means you\'ll take the training and pass a quiz to complete it.'
               : 'Select a rating to see the next step.'}
         </div>
 

@@ -113,6 +113,6 @@ best-effort — if it fails, the assessment is still saved and the manager still
 ## How the workflow runs
 1. **Admin** adds job-roles (Org Roles tab), tags courses with `JobRoles`/`Departments` + `Mandatory`, and fills employee profiles (`JobRole`/`Department`/`ManagerEmail`).
 2. **Employee** signs in → mandatory matching courses are auto-enrolled (idempotent). They can also **Browse All Courses** and self-enroll.
-3. After completing a course the employee does a **Self-Assessment (1–5)**:
-   - **≥ 4** → `PendingManagerReview` → appears in the manager's **Assessment Reviews** tab; manager approves or adjusts the rating (→ `Approved`).
-   - **< 4** → `Remediation` → employee must redo the material and pass the quiz (→ `RemediationQuizPassed`).
+3. **Before** starting a course the employee does a **Self-Assessment (1–5)** — "how well do you already know this?":
+   - **≥ 4** (already know it) → `PendingManagerReview` → appears in the manager's **Assessment Reviews** tab. Manager **approves** → course marked **Completed** (skipped, `Approved`); or sets a rating **< 4** → employee must take the training. If the employee has **no manager**, ≥ 4 is auto-approved.
+   - **< 4** (need training) → `Remediation` → employee takes the course + passes the quiz (→ `RemediationQuizPassed`, Completed).

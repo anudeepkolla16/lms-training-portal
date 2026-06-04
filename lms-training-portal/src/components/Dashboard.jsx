@@ -111,9 +111,12 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
   const handleAssessmentSubmitted = async (nextState) => {
     const course = assessCourse;
     setAssessCourse(null);
-    // A low rating reopens the course (no longer "Completed") and sends them into redo + quiz
     if (nextState === 'Remediation' && course?.Id) {
+      // Low rating → must take the training; ensure it isn't marked complete
       try { await updateEnrollmentStatus(accessToken, course.Id, 'In Progress'); } catch (e) { /* non-blocking */ }
+    } else if (nextState === 'Approved' && course?.Id) {
+      // High rating with no manager → auto-approved skip → mark complete
+      try { await updateEnrollmentStatus(accessToken, course.Id, 'Completed'); } catch (e) { /* non-blocking */ }
     }
     await reload();
     if (nextState === 'Remediation' && course) {
@@ -134,10 +137,10 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
   const assessmentBadge = (a) => {
     if (!a) return null;
     const map = {
-      PendingManagerReview: { bg: '#dbeafe', color: '#1e40af', text: '⏳ Pending Manager Review' },
-      Approved: { bg: '#d1fae5', color: '#065f46', text: `✅ Approved ⭐${a.ManagerRating || a.SelfRating}` },
-      Remediation: { bg: '#fee2e2', color: '#991b1b', text: '🔁 Remediation Required' },
-      RemediationQuizPassed: { bg: '#d1fae5', color: '#065f46', text: '✅ Remediation Complete' },
+      PendingManagerReview: { bg: '#dbeafe', color: '#1e40af', text: `⏳ Skip request pending ⭐${a.SelfRating}` },
+      Approved: { bg: '#d1fae5', color: '#065f46', text: `✅ Skipped (manager OK) ⭐${a.ManagerRating || a.SelfRating}` },
+      Remediation: { bg: '#fef3c7', color: '#92400e', text: '📚 Training required' },
+      RemediationQuizPassed: { bg: '#d1fae5', color: '#065f46', text: '✅ Completed' },
     };
     const s = map[a.AssessmentState];
     if (!s) return null;
@@ -219,8 +222,11 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
           {enrollments.map(e => {
             const a = assessmentFor(e.Title);
             const recommended = matchesCsv(e.JobRoles, userProfile?.jobRole) || matchesCsv(e.Departments, userProfile?.department);
-            const needsRemediation = a?.AssessmentState === 'Remediation';
-            const canSelfAssess = e.Status === 'Completed' && (!a || a.AssessmentState === 'RemediationQuizPassed');
+            const state = a?.AssessmentState;
+            const isCompleted = e.Status === 'Completed';
+            const pendingReview = state === 'PendingManagerReview';
+            const needsTraining = state === 'Remediation'; // self-rated < 4, or manager required training
+            const canSelfAssess = !isCompleted && !a; // pre-course "do you already know this?" gate
             return (
             <div key={e.Id} style={{
               background: 'white', borderRadius: '12px', padding: '20px 24px',
@@ -245,29 +251,24 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '10px', flexShrink: 0, flexWrap: 'wrap' }}>
-                {e.CourseMaterials && (
-                  <button onClick={() => { markAsRead(e.Id); setSelectedCourse(e); setShowPDF(true); }} style={{
-                    background: '#3b82f6', color: 'white', padding: '9px 16px',
-                    borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
-                  }}>
-                    📖 Read Course
-                  </button>
-                )}
-                {needsRemediation && (
-                  <button onClick={() => { markAsRead(e.Id); if (e.CourseMaterials) { setSelectedCourse(e); setShowPDF(true); } else { handleStartQuiz(e, true); } }} style={{
-                    background: '#ef4444', color: 'white', padding: '9px 16px',
-                    borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
-                  }}>
-                    🔁 Redo & Take Quiz
-                  </button>
-                )}
                 {canSelfAssess && (
                   <button onClick={() => setAssessCourse(e)} style={{
                     background: '#8b5cf6', color: 'white', padding: '9px 16px',
                     borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
                   }}>
-                    ⭐ Self-Assess
+                    ⭐ Self-Assess to Start
                   </button>
+                )}
+                {needsTraining && (
+                  <button onClick={() => { markAsRead(e.Id); if (e.CourseMaterials) { setSelectedCourse(e); setShowPDF(true); } else { handleStartQuiz(e, true); } }} style={{
+                    background: '#10b981', color: 'white', padding: '9px 16px',
+                    borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
+                  }}>
+                    📖 Take Course & Quiz
+                  </button>
+                )}
+                {pendingReview && (
+                  <span style={{ alignSelf: 'center', color: '#1e40af', fontSize: '12px', fontWeight: '600' }}>Awaiting manager decision…</span>
                 )}
                 <button onClick={() => { setSelectedCourse(e); setShowPDF(false); }} style={{
                   background: '#f1f5f9', color: '#334155', padding: '9px 16px',
@@ -310,14 +311,15 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
               )}
               {(() => {
                 const a = assessmentFor(selectedCourse.Title);
-                const isRemediation = a?.AssessmentState === 'Remediation';
-                if (selectedCourse.Status === 'Completed' && !isRemediation) {
+                const needsTraining = a?.AssessmentState === 'Remediation';
+                if (selectedCourse.Status === 'Completed') {
                   return <span style={{ background: '#d1fae5', color: '#065f46', padding: '8px 14px', borderRadius: '7px', fontSize: '13px', fontWeight: '600' }}>✅ Completed</span>;
                 }
+                if (!needsTraining) return null; // course is gated behind the self-assessment
                 return (
-                  <button onClick={() => handleStartQuiz(selectedCourse, isRemediation)}
+                  <button onClick={() => handleStartQuiz(selectedCourse, true)}
                     style={{ background: '#8b5cf6', color: 'white', padding: '8px 14px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
-                    🎯 {isRemediation ? 'Take Quiz (Remediation)' : 'Take Quiz & Complete'}
+                    🎯 Take Quiz & Complete
                   </button>
                 );
               })()}
@@ -379,10 +381,28 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
             </div>
 
             {(() => {
+              const a = assessmentFor(selectedCourse.Title);
+              const state = a?.AssessmentState;
+              const isCompleted = selectedCourse.Status === 'Completed';
+              const needsTraining = state === 'Remediation';
+              const canSelfAssess = !isCompleted && !a;
               const canTakeQuiz = !selectedCourse.CourseMaterials || readCourses.has(selectedCourse.Id);
               return (
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  {selectedCourse.CourseMaterials && (
+                  {canSelfAssess && (
+                    <button onClick={() => { setSelectedCourse(null); setAssessCourse(selectedCourse); }} style={{
+                      background: '#8b5cf6', color: 'white', padding: '11px 18px',
+                      borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '700', flex: 1
+                    }}>
+                      ⭐ Self-Assess to Start
+                    </button>
+                  )}
+                  {state === 'PendingManagerReview' && (
+                    <div style={{ flex: 1, textAlign: 'center', color: '#1e40af', fontSize: '13px', fontWeight: '600', alignSelf: 'center' }}>
+                      ⏳ Awaiting your manager's decision on your skip request.
+                    </div>
+                  )}
+                  {needsTraining && selectedCourse.CourseMaterials && (
                     <button onClick={() => { markAsRead(selectedCourse.Id); setShowPDF(true); }} style={{
                       background: '#3b82f6', color: 'white', padding: '11px 18px',
                       borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600', flex: 1
@@ -390,10 +410,10 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
                       📖 Read Course Material
                     </button>
                   )}
-                  {selectedCourse.Status !== 'Completed' && (
+                  {needsTraining && (
                     canTakeQuiz ? (
-                      <button onClick={() => handleStartQuiz(selectedCourse)} style={{
-                        background: '#8b5cf6', color: 'white', padding: '11px 18px',
+                      <button onClick={() => handleStartQuiz(selectedCourse, true)} style={{
+                        background: '#10b981', color: 'white', padding: '11px 18px',
                         borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '700', flex: 1
                       }}>
                         🎯 Take Quiz & Complete
