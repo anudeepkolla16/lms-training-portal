@@ -115,7 +115,7 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
       const deptEmails = new Set(profiles.filter(p => myDept && (p.Department || '').toLowerCase() === myDept).map(p => (p.Title || '').toLowerCase()));
       inScopeA = all.filter(a => deptEmails.has((a.EmployeeID || '').toLowerCase()));
     } else {
-      inScopeA = all.filter(a => (a.ManagerEmail || '').toLowerCase() === myEmail);
+      inScopeA = myEmail ? all.filter(a => (a.ManagerEmail || '').toLowerCase() === myEmail) : [];
     }
     setReviews(inScopeA);
   }, [accessToken, isHOD, profiles, myDept, myEmail]);
@@ -140,7 +140,11 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
         ReviewDate: new Date().toISOString(),
       });
       const enr = findEnrollment(review);
-      if (enr) await updateEnrollmentStatus(accessToken, enr.Id, needsRedo ? 'In Progress' : 'Completed');
+      // Reopen on redo; only (re)mark Completed if it isn't already — avoids re-stamping the completion date
+      if (enr) {
+        if (needsRedo) await updateEnrollmentStatus(accessToken, enr.Id, 'In Progress');
+        else if (enr.Status !== 'Completed') await updateEnrollmentStatus(accessToken, enr.Id, 'Completed');
+      }
       notifyAssessmentReviewed(accessToken, review.EmployeeID, review.Title, finalRating, needsRedo); // best-effort
       setMsg(`Saved: ${(review.EmployeeID || '').split('@')[0]} — ${review.Title} → ${finalRating}/5${needsRedo ? ' (sent back for redo, employee notified)' : ' (approved)'}.`);
       await loadReviews();
