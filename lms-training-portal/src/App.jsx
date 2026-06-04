@@ -29,7 +29,6 @@ const AppContent = () => {
         account: accounts[0],
         forceRefresh: true
       }).then(res => {
-        console.log('Graph token acquired, audience:', res.accessToken.split('.').map((p,i)=>i===1?JSON.parse(atob(p)):null).find(Boolean)?.aud);
         setAccessToken(res.accessToken);
       }).catch(err => {
         if (err instanceof InteractionRequiredAuthError) {
@@ -40,6 +39,18 @@ const AppContent = () => {
       });
     }
   }, [isAuthenticated, accounts, instance, accessToken]);
+
+  // Keep the Graph token fresh for long sessions — MSAL caches/refreshes silently,
+  // but the app must re-acquire so it isn't holding an expired token string.
+  React.useEffect(() => {
+    if (!isAuthenticated || accounts.length === 0) return undefined;
+    const id = setInterval(() => {
+      instance.acquireTokenSilent({ scopes: SP_SCOPES, account: accounts[0] })
+        .then(res => setAccessToken(res.accessToken))
+        .catch(() => { /* next call / interaction will recover */ });
+    }, 20 * 60 * 1000); // every 20 minutes (tokens last ~60–75 min)
+    return () => clearInterval(id);
+  }, [isAuthenticated, accounts, instance]);
 
   // Get user profile (access-role + job-role/department/manager for training features)
   React.useEffect(() => {
