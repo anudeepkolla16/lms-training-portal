@@ -10,6 +10,11 @@ import { downloadCSV } from '../utils/csv';
 
 const ACCENT = '#0d9488';
 
+// When a Skills list hasn't been provisioned in SharePoint, writes 404. Show a clear setup hint
+// (starts with "Error" so the banner styles it as an error) instead of a generic message.
+const SETUP_HINT = 'Error: the Skills lists are not set up in SharePoint yet — provision RoleSkills, RoleExpectations and Skill Assessments (run the provisioning script, see SETUP_ROLE_TRAINING.md). Reads use sample data until then.';
+const writeError = (e, fallback) => (e?.response?.status === 404 ? SETUP_HINT : fallback);
+
 // ---------- small shared bits ----------
 const SLPill = ({ value, expected, uncertain }) => {
   const v = Number(value) || 0;
@@ -170,7 +175,7 @@ const MySkills = ({ accessToken, myEmail, myJobRole, myOL, myDept, skillsForRole
       setEdits({});
       await reload();
       setMsg('Self-assessment submitted. Your manager will calibrate and release your learning path.');
-    } catch (e) { setMsg('Error saving. Please try again.'); }
+    } catch (e) { setMsg(writeError(e, 'Error saving. Please try again.')); }
     setSaving(false);
   };
 
@@ -293,7 +298,7 @@ const Calibrate = ({ accessToken, myEmail, profiles, skillsForRole, expFor, asse
       setEdits({}); setNote('');
       await reload();
       setMsg('Path released. The employee can now see their calibrated levels and learning path.');
-    } catch (e) { setMsg('Error releasing. Please try again.'); }
+    } catch (e) { setMsg(writeError(e, 'Error releasing. Please try again.')); }
   };
 
   return (
@@ -490,12 +495,12 @@ const ManageSkills = ({ accessToken, orgRoles, roleSkills, expectations, skillsF
     if (!newSkill.trim() || !selRole) return;
     setMsg('');
     try { await createRoleSkill(accessToken, { Title: newSkill.trim(), Role: selRole, Category: 'Core', Priority: true, SortOrder: skills.length + 1 }); setNewSkill(''); await reload(); setMsg('Skill added.'); }
-    catch (e) { setMsg('Error adding skill.'); }
+    catch (e) { setMsg(writeError(e, 'Error adding skill.')); }
   };
-  const removeSkill = async (id) => { setMsg(''); try { await deleteRoleSkill(accessToken, id); await reload(); } catch (e) { setMsg('Error deleting skill.'); } };
-  const togglePriority = async (s) => { try { await updateRoleSkill(accessToken, s.Id, { Priority: !(s.Priority === true || s.Priority === 'true') }); await reload(); } catch (e) { setMsg('Error updating.'); } };
-  const seed = async () => { setMsg(''); try { const n = await seedRoleSkills(accessToken, selRole, roleSkills); await reload(); setMsg(n ? `Seeded ${n} starter skill(s) — edit them to fit ${selRole}.` : 'Role already has those starter skills.'); } catch (e) { setMsg('Error seeding.'); } };
-  const setExpected = async (ol, val) => { setMsg(''); try { await upsertRoleExpectation(accessToken, { Role: selRole, OrgLevel: ol, ExpectedLevel: Number(val) }, expectations); await reload(); } catch (e) { setMsg('Error saving expected level.'); } };
+  const removeSkill = async (id) => { setMsg(''); try { await deleteRoleSkill(accessToken, id); await reload(); } catch (e) { setMsg(writeError(e, 'Error deleting skill.')); } };
+  const togglePriority = async (s) => { try { await updateRoleSkill(accessToken, s.Id, { Priority: !(s.Priority === true || s.Priority === 'true') }); await reload(); } catch (e) { setMsg(writeError(e, 'Error updating.')); } };
+  const seed = async () => { setMsg(''); try { const n = await seedRoleSkills(accessToken, selRole, roleSkills); await reload(); setMsg(n ? `Seeded ${n} starter skill(s) — edit them to fit ${selRole}.` : 'No starter skills added — they may already exist, or the Skills lists are not provisioned yet (see SETUP).'); } catch (e) { setMsg(writeError(e, 'Error seeding.')); } };
+  const setExpected = async (ol, val) => { setMsg(''); try { await upsertRoleExpectation(accessToken, { Role: selRole, OrgLevel: ol, ExpectedLevel: Number(val) }, expectations); await reload(); } catch (e) { setMsg(writeError(e, 'Error saving expected level.')); } };
 
   return (
     <div>
