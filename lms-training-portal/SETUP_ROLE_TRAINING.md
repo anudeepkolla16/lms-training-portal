@@ -152,4 +152,4 @@ Each job-role can have a **JD document** that every employee in that role must r
 
    Quiz difficulty comes from the **`Difficulty`** column on `Quiz Questions` (`Medium` / `Hard`). Author both tiers per course; if only one tier exists it's used for everyone.
 
-   The reporting **Manager → Assessment Reviews** tab is **read-only**: it lists each team member's self-rating and, for 4–5 raters, their challenge-quiz score + Pass/Fail and outcome (with CSV export). No approve/reject step — managers are also emailed each challenge result.
+   The reporting **Manager → Assessment Reviews** tab lists each team member's self-rating and, for 4–5 raters, their challenge-quiz score + Pass/Fail and outcome (with CSV export). The manager can set a rating and **Approve** (marks the course complete) or **Reject** (reopens it — the employee must take the course); the employee is emailed either way. Managers are also emailed each challenge result automatically.

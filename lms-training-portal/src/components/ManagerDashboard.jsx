@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, getQuizResults, notifyCourseAssigned, sendCompletionReminders, getAllUserProfiles, getAllSelfAssessments } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, getQuizResults, updateAssessment, updateEnrollmentStatus, notifyCourseAssigned, notifyAssessmentReviewed, sendCompletionReminders, getAllUserProfiles, getAllSelfAssessments } from '../services/sharePointAPI';
 import { downloadCSV } from '../utils/csv';
 
 
@@ -85,6 +85,7 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
   const [quizResults, setQuizResults] = React.useState([]);
   const [quizLoaded, setQuizLoaded] = React.useState(false);
   const [reviews, setReviews] = React.useState([]);
+  const [reviewEdits, setReviewEdits] = React.useState({}); // { [id]: { rating, comment } }
   const [dept, setDept] = React.useState('');
   const [reminding, setReminding] = React.useState(false);
   const today = new Date();
@@ -122,6 +123,39 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
   }, [accessToken, isHOD, profiles, myDept, myEmail]);
 
   React.useEffect(() => { loadReviews(); }, [loadReviews]);
+
+  const findEnrollment = (review) => enrollments.find(e =>
+    (e.EmployeeID || '').toLowerCase() === (review.EmployeeID || '').toLowerCase() &&
+    (e.Title || '').toLowerCase() === (review.Title || '').toLowerCase());
+
+  // Manager override of a self-assessment. Approve → Approved + course marked Completed.
+  // Reject → Remediation + course reopened (employee must take it). The employee is emailed
+  // either way. Re-runnable, so a mistake can be corrected.
+  const applyReview = async (review, action) => {
+    const edit = reviewEdits[review.Id] || {};
+    const finalRating = Number(edit.rating ?? review.ManagerRating ?? review.SelfRating);
+    const reject = action === 'reject';
+    setMsg('');
+    try {
+      await updateAssessment(accessToken, review.Id, {
+        AssessmentState: reject ? 'Remediation' : 'Approved',
+        ManagerRating: finalRating,
+        ManagerComment: edit.comment || review.ManagerComment || '',
+        ReviewDate: new Date().toISOString(),
+      });
+      const enr = findEnrollment(review);
+      if (enr) {
+        if (reject) await updateEnrollmentStatus(accessToken, enr.Id, 'In Progress');
+        else if (enr.Status !== 'Completed') await updateEnrollmentStatus(accessToken, enr.Id, 'Completed');
+      }
+      notifyAssessmentReviewed(accessToken, review.EmployeeID, review.Title, finalRating, reject); // best-effort
+      setMsg(`Saved: ${(review.EmployeeID || '').split('@')[0]} — ${review.Title} → ${finalRating}/5 (${reject ? 'rejected, employee must take the course' : 'approved'}).`);
+      await loadReviews();
+      setEnrollments(await getAllEnrollments(accessToken));
+    } catch {
+      setMsg('Error saving review. Please try again.');
+    }
+  };
 
   React.useEffect(() => {
     const load = async () => {
@@ -471,8 +505,8 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
       {activeTab === 'reviews' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
-            <p style={{ color: '#64748b', fontSize: '13px', margin: 0, maxWidth: '640px' }}>
-              Your team's self-assessment ratings. Employees who self-rate <strong>4–5</strong> take a <strong>hard challenge quiz</strong> — pass means they skip the course, fail means they take it. The score is shown here for your review (no action needed).
+            <p style={{ color: '#64748b', fontSize: '13px', margin: 0, maxWidth: '680px' }}>
+              Your team's self-assessment ratings + <strong>hard challenge-quiz</strong> results (4–5 raters). Set a rating and <strong style={{ color: '#065f46' }}>Approve</strong> (marks the course complete) or <strong style={{ color: '#991b1b' }}>Reject</strong> (reopens it — the employee must take the course). The employee is emailed either way; you can re-action any row.
             </p>
             {sortedReviews.length > 0 && (
               <button onClick={exportReviews} style={{ background: 'white', color: ACCENT, border: `1px solid ${ACCENT}`, padding: '8px 14px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>⬇ Export CSV</button>
@@ -494,7 +528,7 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
             <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead><tr>{['Employee', 'Course', 'Self-Rating', 'Challenge (Hard)', 'Status', 'Date'].map(h => (
+                  <thead><tr>{['Employee', 'Course', 'Self-Rating', 'Challenge (Hard)', 'Status', 'Manager action'].map(h => (
                     <th key={h} style={{ padding: '10px 14px', textAlign: 'left', background: '#fffbeb', color: '#374151', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}</tr></thead>
                   <tbody>
@@ -502,7 +536,8 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
                       const meta = stateMeta(r.AssessmentState);
                       const hasChallenge = r.ChallengeResult || r.ChallengePercent != null;
                       const passed = r.ChallengeResult === 'Pass';
-                      const when = r.ReviewDate || r.AssessmentDate;
+                      const edit = reviewEdits[r.Id] || {};
+                      const reviewed = r.AssessmentState === 'Approved' || r.AssessmentState === 'Remediation';
                       return (
                         <tr key={r.Id}>
                           <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#374151' }}>
@@ -526,8 +561,17 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
                           </td>
                           <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
                             <span style={{ background: meta.bg, color: meta.color, padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>{meta.text}</span>
+                            {reviewed && <div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '3px' }}>by manager: {r.ManagerRating ?? r.SelfRating}/5</div>}
                           </td>
-                          <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#64748b', whiteSpace: 'nowrap' }}>{when ? new Date(when).toLocaleDateString() : '—'}</td>
+                          <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <select title="Rating to record" style={{ ...inputStyle, width: 'auto', padding: '5px 8px' }} value={edit.rating ?? (r.ManagerRating ?? r.SelfRating)} onChange={e => setReviewEdits(p => ({ ...p, [r.Id]: { ...edit, rating: e.target.value } }))}>
+                                {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}/5</option>)}
+                              </select>
+                              <button onClick={() => applyReview(r, 'approve')} style={{ background: '#10b981', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>✅ Approve</button>
+                              <button onClick={() => applyReview(r, 'reject')} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>❌ Reject</button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
