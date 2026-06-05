@@ -1,8 +1,8 @@
 <#
   One-time SharePoint provisioning for the role-based-training features (PnP PowerShell).
 
-  Creates idempotently: OrgRoles + Self Assessments lists with columns, and adds the
-  new columns to the existing UserRoles and Courses lists.
+  Creates idempotently: OrgRoles + Self Assessments + JD Acknowledgements lists with
+  columns, and adds the new columns to the existing UserRoles and Courses lists.
 
   Prereqs:
     Install-Module PnP.PowerShell -Scope CurrentUser
@@ -52,6 +52,13 @@ Ensure-Field "Self Assessments" "ManagerComment"  "Note"
 Ensure-Field "Self Assessments" "EmployeeComment" "Note"
 Ensure-Field "Self Assessments" "AssessmentDate"  "DateTime"
 Ensure-Field "Self Assessments" "ReviewDate"      "DateTime"
+
+# 2b. JD Acknowledgements (signed job-description sign-offs)
+Ensure-List "JD Acknowledgements"
+Ensure-Field "JD Acknowledgements" "Role"             "Text"
+Ensure-Field "JD Acknowledgements" "EmployeeID"       "Text"
+Ensure-Field "JD Acknowledgements" "Signature"        "Text"
+Ensure-Field "JD Acknowledgements" "AcknowledgedDate" "DateTime"
 
 # 3. Columns on existing UserRoles
 Ensure-Field "UserRoles" "JobRole"     "Text"
