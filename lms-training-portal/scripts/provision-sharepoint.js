@@ -7,6 +7,7 @@
  *   - List "Self Assessments"  + columns SelfRating, AssessmentState, ManagerEmail,
  *                                ManagerRating, ManagerComment, EmployeeComment,
  *                                EmployeeID, AssessmentDate, ReviewDate
+ *   - List "JD Acknowledgements" + columns Role, EmployeeID, Signature, AcknowledgedDate
  *   - Columns added to existing "UserRoles":  JobRole, Department, ManagerEmail
  *   - Columns added to existing "Courses":    JobRoles, Departments, Mandatory
  *
@@ -140,6 +141,14 @@ async function ensureColumns(siteId, listName, columns) {
       text('EmployeeComment', true),
       dateTime('AssessmentDate'),
       dateTime('ReviewDate'),
+    ]);
+
+    // 2b. JD Acknowledgements (signed job-description sign-offs)
+    await ensureList(siteId, 'JD Acknowledgements', [
+      text('Role'),
+      text('EmployeeID'),
+      text('Signature'),
+      dateTime('AcknowledgedDate'),
     ]);
 
     // 3. Columns on existing UserRoles
