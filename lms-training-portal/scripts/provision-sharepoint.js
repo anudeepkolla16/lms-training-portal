@@ -164,7 +164,7 @@ async function ensureColumns(siteId, listName, columns) {
 
     // 4. Columns on existing Courses
     console.log(`• ensuring columns on "Courses"`);
-    await ensureColumns(siteId, 'Courses', [text('JobRoles'), text('Departments'), boolean('Mandatory')]);
+    await ensureColumns(siteId, 'Courses', [text('JobRoles'), text('Departments'), text('Skills'), boolean('Mandatory')]);
 
     // 5. Column on existing Employee Enrollments
     console.log(`• ensuring columns on "Employee Enrollments"`);

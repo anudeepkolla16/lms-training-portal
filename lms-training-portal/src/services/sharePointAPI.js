@@ -186,6 +186,7 @@ export const createCourse = async (token, data) => {
     if (data.Description) fields.Description = data.Description;
     if (data.JobRoles !== undefined) fields.JobRoles = String(data.JobRoles || '');
     if (data.Departments !== undefined) fields.Departments = String(data.Departments || '');
+    if (data.Skills !== undefined) fields.Skills = String(data.Skills || '');
     if (data.Mandatory !== undefined) fields.Mandatory = !!data.Mandatory;
 
     const res = await axios.post(
@@ -698,6 +699,7 @@ export const updateCourse = async (token, courseId, data) => {
     if (data.Description !== undefined) fields.Description = data.Description;
     if (data.JobRoles !== undefined) fields.JobRoles = String(data.JobRoles || '');
     if (data.Departments !== undefined) fields.Departments = String(data.Departments || '');
+    if (data.Skills !== undefined) fields.Skills = String(data.Skills || '');
     if (data.Mandatory !== undefined) fields.Mandatory = !!data.Mandatory;
     await axios.patch(
       `${GRAPH}/sites/${siteId}/lists/Courses/items/${courseId}`,
@@ -739,6 +741,17 @@ export const CURRENT_CYCLE = 'Q4 2026';
 // Fallback expected skill level per org level when no explicit RoleExpectation row exists.
 export const DEFAULT_EXPECTED_BY_OL = { OL1: 2, OL2: 3, OL3: 3, OL4: 4, OL5: 5 };
 export const slCode = (v) => `SL${Math.max(1, Math.min(5, Math.round(Number(v) || 0)))}`;
+
+// Courses recommended for a skill: those whose `Skills` tag lists it; if none are tagged,
+// fall back to a title keyword match so the learning path still suggests something useful.
+export const coursesForSkill = (courses, skill) => {
+  const want = (skill || '').trim().toLowerCase();
+  if (!want) return [];
+  const tagged = (courses || []).filter(c => splitCsv(c.Skills).includes(want) && !isJobDescription(c.Title));
+  if (tagged.length) return tagged;
+  const kw = want.split(/\s+/)[0];
+  return (courses || []).filter(c => !isJobDescription(c.Title) && (c.Title || '').toLowerCase().includes(kw));
+};
 
 // Expected level for a (role, orgLevel) — explicit RoleExpectations row wins, else OL baseline.
 export const expectedLevelFor = (role, orgLevel, expectations = []) => {

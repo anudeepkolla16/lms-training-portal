@@ -89,6 +89,7 @@ Admins set these from **Admin Dashboard → Employee Profiles**.
 |---|---|---|
 | `JobRoles` | Single line text | Semicolon-delimited target job-roles, e.g. `Data Engineer;BI Analyst`. Blank = applies to all. |
 | `Departments` | Single line text | Semicolon-delimited target departments. Blank = applies to all. |
+| `Skills` | Single line text | Semicolon-delimited skills this course develops. Drives the Skills-module learning-path course recommendations. |
 | `Mandatory` | Yes/No (boolean) | When Yes, matching employees are auto-enrolled on login. |
 
 Admins set these in the **Add / Edit Course** forms.
@@ -131,6 +132,8 @@ A separate **🎯 Skills** area (alongside courses) where employees self-rate on
 | `AssessmentDate` / `ReviewDate` | Date and Time | Set automatically. |
 
 **How it runs:** Admin/HR set skills + expected levels per role (Manage Skills) and each employee's `OrgLevel` (Employee Profiles) → employee self-rates each priority skill and submits → manager calibrates the levels and **releases** the path → HoD sees department roll-up (assessed / paths / avg gap / top gaps), HR sees function-by-function status. Until the lists exist the module runs on built-in sample data (Recruiter role).
+
+**Learning path → courses:** for each skill where the employee is below expected, the path recommends courses tagged with that skill (Courses `Skills` field; falls back to a title keyword match) and offers a one-click **“+ Add to training”** that enrols them. Tag courses with skills in **Admin → Courses** (Related Skills).
 
 ## Access roles & dashboard scoping
 

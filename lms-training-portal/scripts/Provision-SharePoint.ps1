@@ -72,6 +72,7 @@ Ensure-Field "UserRoles" "ManagerEmail" "Text"
 # 4. Columns on existing Courses
 Ensure-Field "Courses" "JobRoles"    "Text"
 Ensure-Field "Courses" "Departments" "Text"
+Ensure-Field "Courses" "Skills"      "Text"
 Ensure-Field "Courses" "Mandatory"   "Boolean"
 
 # 5. Column on existing Employee Enrollments
