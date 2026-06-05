@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getMyEnrollments, getCourses, updateEnrollmentStatus, getMyAssessments, autoAssignMandatory, updateAssessment, matchesCsv, isTruthy, isJobDescription, isJdPlaceholder, saveJdAcknowledgement, getMyJdAcknowledgements } from '../services/sharePointAPI';
+import { getMyEnrollments, getCourses, updateEnrollmentStatus, getMyAssessments, autoAssignMandatory, updateAssessment, matchesCsv, isTruthy, isJobDescription, isJdPlaceholder, saveJdAcknowledgement, getMyJdAcknowledgements, notifyChallengeResult } from '../services/sharePointAPI';
 import QuizModal from './QuizModal';
 import SelfAssessmentModal from './SelfAssessmentModal';
 import JdAcknowledgeModal from './JdAcknowledgeModal';
@@ -12,7 +12,7 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
   const [showPDF, setShowPDF] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   const [quizCourse, setQuizCourse] = useState(null);
-  const [remediationMode, setRemediationMode] = useState(false);
+  const [quizMeta, setQuizMeta] = useState(null); // { mode: 'challenge'|'remediation', difficulty: 'Hard'|'Medium', rating }
   const [assessCourse, setAssessCourse] = useState(null);
   const [jdAckCourse, setJdAckCourse] = useState(null); // JD pending signature/acknowledgement
   const [jdAcks, setJdAcks] = useState([]);
@@ -105,43 +105,80 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
     }
   };
 
-  const handleStartQuiz = (course, isRemediation = false) => {
+  const handleStartQuiz = (course, meta = {}) => {
     setQuizCourse(course);
-    setRemediationMode(isRemediation);
+    setQuizMeta({ mode: meta.mode || 'remediation', difficulty: meta.difficulty || 'Medium', rating: meta.rating });
     setShowQuiz(true);
     setShowPDF(false);
     setSelectedCourse(null);
   };
 
-  const handleQuizComplete = async (passed) => {
-    setShowQuiz(false);
-    if (passed && quizCourse) {
-      if (remediationMode) {
-        const a = assessmentFor(quizCourse.Title);
-        if (a?.Id) await updateAssessment(accessToken, a.Id, { AssessmentState: 'RemediationQuizPassed' });
-        await handleMarkComplete(quizCourse.Id);
-      } else {
-        await handleMarkComplete(quizCourse.Id);
-      }
-    }
-    setRemediationMode(false);
-    setQuizCourse(null);
+  // Post-course quiz difficulty follows the recorded self-rating: 4–5 → Hard, otherwise Medium.
+  const quizMetaFor = (course) => {
+    const a = assessmentFor(course.Title);
+    return { mode: 'remediation', difficulty: (a?.SelfRating >= 4 ? 'Hard' : 'Medium'), rating: a?.SelfRating };
   };
 
-  const handleAssessmentSubmitted = async (nextState) => {
+  const routeToCourse = (course) => {
+    setSelectedCourse({ ...course, Status: 'In Progress' });
+    setShowPDF(!!course.CourseMaterials);
+  };
+
+  const handleQuizComplete = async (passed, result = {}) => {
+    setShowQuiz(false);
+    const course = quizCourse;
+    const meta = quizMeta || {};
+    setQuizMeta(null);
+    setQuizCourse(null);
+    if (!course) return;
+    const a = assessmentFor(course.Title);
+
+    if (meta.mode === 'challenge') {
+      // Email the reporting manager the challenge result + self-rating (pass or fail), for review.
+      if (userProfile?.managerEmail) {
+        notifyChallengeResult(accessToken, {
+          to: userProfile.managerEmail, employee: userEmail, courseTitle: course.Title,
+          rating: meta.rating, score: result.score ?? 0, total: result.total ?? 0,
+          percentage: result.percentage ?? (passed ? 100 : 0), passed,
+        });
+      }
+      if (passed) {
+        if (a?.Id) await updateAssessment(accessToken, a.Id, { AssessmentState: 'ChallengePassed', ManagerRating: meta.rating, ReviewDate: new Date().toISOString() });
+        await handleMarkComplete(course.Id);
+      } else {
+        // Failed the challenge → must take the full course + quiz
+        if (a?.Id) await updateAssessment(accessToken, a.Id, { AssessmentState: 'Remediation' });
+        try { await updateEnrollmentStatus(accessToken, course.Id, 'In Progress'); } catch (e) { /* non-blocking */ }
+        await reload();
+        routeToCourse(course);
+      }
+      return;
+    }
+
+    // Post-course (remediation) quiz
+    if (passed) {
+      if (a?.Id) await updateAssessment(accessToken, a.Id, { AssessmentState: 'RemediationQuizPassed' });
+      await handleMarkComplete(course.Id);
+    } else {
+      // Failed → quiz ends, take the course again
+      try { await updateEnrollmentStatus(accessToken, course.Id, 'In Progress'); } catch (e) { /* non-blocking */ }
+      await reload();
+      routeToCourse(course);
+    }
+  };
+
+  const handleAssessmentSubmitted = async ({ rating, nextState }) => {
     const course = assessCourse;
     setAssessCourse(null);
-    if (nextState === 'Remediation' && course?.Id) {
-      // Low rating → must take the training; ensure it isn't marked complete
+    if (!course) return;
+    await reload(); // make sure the new assessment record is loaded before the quiz completes
+    if (rating >= 4) {
+      // 4–5 → take the HARD challenge quiz right away
+      handleStartQuiz(course, { mode: 'challenge', difficulty: 'Hard', rating });
+    } else {
+      // 1–3 → into the course first; MEDIUM quiz afterwards
       try { await updateEnrollmentStatus(accessToken, course.Id, 'In Progress'); } catch (e) { /* non-blocking */ }
-    } else if (nextState === 'Approved' && course?.Id) {
-      // High rating with no manager → auto-approved skip → mark complete
-      try { await updateEnrollmentStatus(accessToken, course.Id, 'Completed'); } catch (e) { /* non-blocking */ }
-    }
-    await reload();
-    if (nextState === 'Remediation' && course) {
-      setSelectedCourse({ ...course, Status: 'In Progress' });
-      setShowPDF(!!course.CourseMaterials);
+      routeToCourse(course);
     }
   };
 
@@ -157,10 +194,13 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
   const assessmentBadge = (a) => {
     if (!a) return null;
     const map = {
-      PendingManagerReview: { bg: '#dbeafe', color: '#1e40af', text: `⏳ Skip request pending ⭐${a.SelfRating}` },
-      Approved: { bg: '#d1fae5', color: '#065f46', text: `✅ Skipped (manager OK) ⭐${a.ManagerRating || a.SelfRating}` },
+      ChallengePending: { bg: '#ede9fe', color: '#5b21b6', text: `💪 Challenge quiz pending ⭐${a.SelfRating}` },
+      ChallengePassed: { bg: '#d1fae5', color: '#065f46', text: `✅ Passed challenge ⭐${a.ManagerRating || a.SelfRating}` },
       Remediation: { bg: '#fef3c7', color: '#92400e', text: '📚 Training required' },
       RemediationQuizPassed: { bg: '#d1fae5', color: '#065f46', text: '✅ Completed' },
+      // legacy states (older records)
+      PendingManagerReview: { bg: '#dbeafe', color: '#1e40af', text: `⏳ Pending review ⭐${a.SelfRating}` },
+      Approved: { bg: '#d1fae5', color: '#065f46', text: `✅ Approved ⭐${a.ManagerRating || a.SelfRating}` },
     };
     const s = map[a.AssessmentState];
     if (!s) return null;
@@ -246,8 +286,8 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
             const isCompleted = e.Status === 'Completed';
             const isJD = isJobDescription(e.Title); // mandatory read-&-acknowledge document, no quiz/self-assessment
             const jdPlaceholder = isJD && isJdPlaceholder(e.CourseMaterials); // document not uploaded yet
-            const pendingReview = state === 'PendingManagerReview';
-            const needsTraining = state === 'Remediation'; // self-rated < 4, or manager required training
+            const challengePending = state === 'ChallengePending'; // self-rated 4–5, hard challenge quiz not yet passed
+            const needsTraining = state === 'Remediation'; // 1–3 rating, or failed challenge → take the course
             const canSelfAssess = !isCompleted && !a && !isJD; // pre-course "do you already know this?" gate
             const readyToAck = jdPlaceholder || readCourses.has(e.Id) || !e.CourseMaterials; // unlocks after viewing the JD
             const jdAck = isCompleted && isJD ? ackFor(e.Title) : null;
@@ -307,16 +347,21 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
                     ⭐ Self-Assess to Start
                   </button>
                 )}
+                {challengePending && (
+                  <button onClick={() => handleStartQuiz(e, { mode: 'challenge', difficulty: 'Hard', rating: a?.SelfRating })} style={{
+                    background: '#7c3aed', color: 'white', padding: '9px 16px',
+                    borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
+                  }}>
+                    💪 Take Challenge Quiz
+                  </button>
+                )}
                 {needsTraining && (
-                  <button onClick={() => { markAsRead(e.Id); if (e.CourseMaterials) { setSelectedCourse(e); setShowPDF(true); } else { handleStartQuiz(e, true); } }} style={{
+                  <button onClick={() => { markAsRead(e.Id); if (e.CourseMaterials) { setSelectedCourse(e); setShowPDF(true); } else { handleStartQuiz(e, quizMetaFor(e)); } }} style={{
                     background: '#10b981', color: 'white', padding: '9px 16px',
                     borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
                   }}>
                     📖 Take Course & Quiz
                   </button>
-                )}
-                {pendingReview && (
-                  <span style={{ alignSelf: 'center', color: '#1e40af', fontSize: '12px', fontWeight: '600' }}>Awaiting manager decision…</span>
                 )}
                 <button onClick={() => { setSelectedCourse(e); setShowPDF(false); }} style={{
                   background: '#f1f5f9', color: '#334155', padding: '9px 16px',
@@ -375,7 +420,7 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
                 }
                 if (!needsTraining) return null; // course is gated behind the self-assessment
                 return (
-                  <button onClick={() => handleStartQuiz(selectedCourse, true)}
+                  <button onClick={() => handleStartQuiz(selectedCourse, quizMetaFor(selectedCourse))}
                     style={{ background: '#8b5cf6', color: 'white', padding: '8px 14px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
                     🎯 Take Quiz & Complete
                   </button>
@@ -491,10 +536,13 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
                       ⭐ Self-Assess to Start
                     </button>
                   )}
-                  {state === 'PendingManagerReview' && (
-                    <div style={{ flex: 1, textAlign: 'center', color: '#1e40af', fontSize: '13px', fontWeight: '600', alignSelf: 'center' }}>
-                      ⏳ Awaiting your manager's decision on your skip request.
-                    </div>
+                  {state === 'ChallengePending' && (
+                    <button onClick={() => { setSelectedCourse(null); handleStartQuiz(selectedCourse, { mode: 'challenge', difficulty: 'Hard', rating: a?.SelfRating }); }} style={{
+                      background: '#7c3aed', color: 'white', padding: '11px 18px',
+                      borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '700', flex: 1
+                    }}>
+                      💪 Take Challenge Quiz (Hard)
+                    </button>
                   )}
                   {needsTraining && selectedCourse.CourseMaterials && (
                     <button onClick={() => { markAsRead(selectedCourse.Id); setShowPDF(true); }} style={{
@@ -506,7 +554,7 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
                   )}
                   {needsTraining && (
                     canTakeQuiz ? (
-                      <button onClick={() => handleStartQuiz(selectedCourse, true)} style={{
+                      <button onClick={() => handleStartQuiz(selectedCourse, quizMetaFor(selectedCourse))} style={{
                         background: '#10b981', color: 'white', padding: '11px 18px',
                         borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '700', flex: 1
                       }}>
@@ -540,7 +588,9 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
           course={quizCourse}
           userEmail={userEmail}
           accessToken={accessToken}
-          onClose={() => { setShowQuiz(false); setQuizCourse(null); setRemediationMode(false); }}
+          difficulty={quizMeta?.difficulty}
+          mode={quizMeta?.mode}
+          onClose={() => { setShowQuiz(false); setQuizCourse(null); setQuizMeta(null); }}
           onComplete={handleQuizComplete}
         />
       )}

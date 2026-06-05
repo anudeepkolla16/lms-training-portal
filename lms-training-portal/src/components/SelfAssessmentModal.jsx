@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { saveSelfAssessment, updateAssessment, sendMail } from '../services/sharePointAPI';
+import { saveSelfAssessment, updateAssessment } from '../services/sharePointAPI';
 
-// Self-assessment after completing a course.
-//  - rating >= 4  -> routed to the employee's manager for review (PendingManagerReview)
-//  - rating <  4  -> employee must redo the course + pass a quiz (Remediation)
+// Self-assessment taken BEFORE the course.
+//  - rating >= 4  -> must pass a HARD challenge quiz to skip the course; manager is emailed the result (ChallengePending)
+//  - rating <= 3  -> go straight into the course, then a MEDIUM quiz (Remediation)
 const SelfAssessmentModal = ({ course, userEmail, managerEmail, accessToken, existingAssessment, onClose, onSubmitted }) => {
   const [rating, setRating] = useState(existingAssessment?.SelfRating || 0);
   const [comment, setComment] = useState('');
@@ -14,9 +14,9 @@ const SelfAssessmentModal = ({ course, userEmail, managerEmail, accessToken, exi
     if (!rating) { setError('Please select a rating from 1 to 5.'); return; }
     setError('');
     setSaving(true);
-    const hasManager = !!(managerEmail && managerEmail.trim());
-    // >=4 with a manager → review; >=4 with no manager → auto-approved (nobody to route to); <4 → redo
-    const nextState = rating >= 4 ? (hasManager ? 'PendingManagerReview' : 'Approved') : 'Remediation';
+    // 4–5 → must pass a HARD challenge quiz to skip the course (manager is emailed the result).
+    // 1–3 → go straight into the course, then a MEDIUM quiz.
+    const nextState = rating >= 4 ? 'ChallengePending' : 'Remediation';
     const fields = {
       Title: course.Title,
       EmployeeID: userEmail,
@@ -25,28 +25,13 @@ const SelfAssessmentModal = ({ course, userEmail, managerEmail, accessToken, exi
       ManagerEmail: managerEmail || '',
       EmployeeComment: comment || '',
     };
-    if (nextState === 'Approved') { fields.ManagerRating = rating; fields.ReviewDate = new Date().toISOString(); }
     try {
       if (existingAssessment?.Id) {
         await updateAssessment(accessToken, existingAssessment.Id, fields);
       } else {
         await saveSelfAssessment(accessToken, fields);
       }
-      // Notify the manager by email when a high rating needs their review (best-effort).
-      if (nextState === 'PendingManagerReview' && managerEmail) {
-        const who = (userEmail || '').split('@')[0];
-        const portal = typeof window !== 'undefined' ? window.location.origin : '';
-        sendMail(accessToken, {
-          to: managerEmail,
-          subject: `Skip request: ${who} — ${course.Title}`,
-          html: `<p>Hi,</p>
-            <p><strong>${userEmail}</strong> says they already know <strong>${course.Title}</strong> and self-rated <strong>${rating}/5</strong>${comment ? ` with the note: <em>“${comment}”</em>` : ''}.</p>
-            <p>Open the Training Portal → <strong>Assessment Reviews</strong> to <strong>approve</strong> (marks the course complete, they skip it) or set a lower rating to <strong>require the training</strong>.</p>
-            ${portal ? `<p><a href="${portal}">Open Training Portal</a></p>` : ''}
-            <p>— Training Portal</p>`,
-        });
-      }
-      onSubmitted && onSubmitted(nextState);
+      onSubmitted && onSubmitted({ rating, nextState });
     } catch (e) {
       setError('Could not save your assessment. Please try again.');
       setSaving(false);
@@ -86,9 +71,9 @@ const SelfAssessmentModal = ({ course, userEmail, managerEmail, accessToken, exi
           padding: '12px 16px', borderRadius: '8px', marginBottom: '18px', fontSize: '13px'
         }}>
           {rating >= 4
-            ? '👍 You\'re saying you already know this. It goes to your manager to confirm — if approved, you can skip the course. (No manager set? It\'s auto-approved.)'
+            ? '💪 You\'ll take a HARD challenge quiz to prove it. Pass → course is marked complete and your manager is emailed the result. Fail → the quiz ends and you take the course.'
             : rating > 0
-              ? '📚 A rating below 4 means you\'ll take the training and pass a quiz to complete it.'
+              ? '📚 You\'ll go through the course, then take a MEDIUM quiz to complete it.'
               : 'Select a rating to see the next step.'}
         </div>
 

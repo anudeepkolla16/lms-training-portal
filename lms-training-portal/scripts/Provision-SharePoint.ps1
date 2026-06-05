@@ -73,4 +73,7 @@ Ensure-Field "Courses" "Mandatory"   "Boolean"
 # 5. Column on existing Employee Enrollments
 Ensure-Field "Employee Enrollments" "CompletedDate" "DateTime"
 
+# 6. Column on existing Quiz Questions (difficulty tier: Medium / Hard)
+Ensure-Field "Quiz Questions" "Difficulty" "Text"
+
 Write-Host "`n✅ Provisioning complete."

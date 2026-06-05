@@ -45,7 +45,7 @@ Admins can add/delete these from **Admin Dashboard → Org Roles (JD)**.
 | `Title` | Single line text | Course title. |
 | `EmployeeID` | Single line text | Employee email. |
 | `SelfRating` | Number | 1–5. |
-| `AssessmentState` | Single line text (or Choice) | `PendingManagerReview`, `Approved`, `Remediation`, `RemediationQuizPassed`. |
+| `AssessmentState` | Single line text (or Choice) | `ChallengePending`, `ChallengePassed`, `Remediation`, `RemediationQuizPassed` (legacy: `PendingManagerReview`, `Approved`). |
 | `ManagerEmail` | Single line text | Reviewer (copied from the employee profile at submit time). |
 | `ManagerRating` | Number | Final rating after manager review. |
 | `ManagerComment` | Multiple lines of text | Optional. |
@@ -87,6 +87,11 @@ Admins set these from **Admin Dashboard → Employee Profiles**.
 | `Mandatory` | Yes/No (boolean) | When Yes, matching employees are auto-enrolled on login. |
 
 Admins set these in the **Add / Edit Course** forms.
+
+## 4b. Add column to existing list: `Quiz Questions`
+| Column | Type | Notes |
+|---|---|---|
+| `Difficulty` | Single line text (or Choice `Medium`/`Hard`) | Quiz tier. `Medium` for 1–3 self-ratings (post-course quiz), `Hard` for 4–5 (challenge quiz). Set per question in **Admin → Quizzes**. Blank/single-tier courses use whatever exists. |
 
 ## Access roles & dashboard scoping
 
@@ -134,6 +139,11 @@ Each job-role can have a **JD document** that every employee in that role must r
 ## How the workflow runs
 1. **Admin** adds job-roles (Org Roles tab), sets a **JD document** per role, tags courses with `JobRoles`/`Departments` + `Mandatory`, and fills employee profiles (`JobRole`/`Department`/`ManagerEmail`).
 2. **Employee** signs in → mandatory matching courses **and their role's JD** are auto-enrolled (idempotent). They can also **Browse All Courses** and self-enroll.
-3. **Before** starting a course the employee does a **Self-Assessment (1–5)** — "how well do you already know this?":
-   - **≥ 4** (already know it) → `PendingManagerReview` → appears in the manager's **Assessment Reviews** tab. Manager **approves** → course marked **Completed** (skipped, `Approved`); or sets a rating **< 4** → employee must take the training. If the employee has **no manager**, ≥ 4 is auto-approved.
-   - **< 4** (need training) → `Remediation` → employee takes the course + passes the quiz (→ `RemediationQuizPassed`, Completed).
+3. **Before** starting a course the employee does a **Self-Assessment (1–5)** — "how well do you already know this?". The rating sets the quiz difficulty and the path:
+   - **4–5** (confident) → take a **HARD challenge quiz** immediately (`ChallengePending`). The score + rating are **emailed to the reporting manager** for review (pass or fail).
+     - **Pass** → course marked **Completed** / skipped (`ChallengePassed`).
+     - **Fail** → quiz ends → must take the full course (`Remediation`).
+   - **1–3** (need training) → go straight into the **course**, then a **MEDIUM quiz** (`Remediation`).
+   - Any quiz **failure** ends the quiz and sends the employee to the course (no in-quiz retry). Passing the post-course quiz completes it (`RemediationQuizPassed`).
+
+   Quiz difficulty comes from the **`Difficulty`** column on `Quiz Questions` (`Medium` / `Hard`). Author both tiers per course; if only one tier exists it's used for everyone.

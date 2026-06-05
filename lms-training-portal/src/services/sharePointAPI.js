@@ -507,6 +507,25 @@ export const notifyAssessmentReviewed = async (token, to, courseTitle, rating, n
   });
 };
 
+// Email the reporting manager the result of an employee's self-assessment challenge quiz
+// (the hard quiz taken when an employee self-rates 4–5). Sent on pass or fail, for their review.
+export const notifyChallengeResult = async (token, { to, employee, courseTitle, rating, score, total, percentage, passed }) => {
+  if (!to) return false;
+  const portal = PORTAL_URL();
+  return sendMail(token, {
+    to,
+    subject: `Self-assessment challenge: ${employee} — ${courseTitle} (${passed ? 'Passed' : 'Failed'})`,
+    html: `<p>Hi,</p>
+      <p><strong>${employee}</strong> self-rated <strong>${rating}/5</strong> on <strong>${courseTitle}</strong> and took the hard challenge quiz:</p>
+      <p style="font-size:16px"><strong>${score}/${total} (${percentage}%)</strong> — <strong style="color:${passed ? '#10b981' : '#ef4444'}">${passed ? 'PASS' : 'FAIL'}</strong></p>
+      <p>${passed
+        ? 'They demonstrated competence, so the course is marked complete (skipped).'
+        : 'They did not pass, so they have been asked to take the full course and quiz.'}</p>
+      ${portal ? `<p><a href="${portal}">Open Training Portal</a></p>` : ''}
+      <p>— Training Portal</p>`,
+  });
+};
+
 // Send one reminder email per employee listing their incomplete courses (overdue flagged).
 // Returns { sent, employees }. Best-effort per email.
 export const sendCompletionReminders = async (token, enrollments) => {
@@ -588,14 +607,20 @@ export const autoAssignMandatory = async (token, email, profile, courses, existi
   return created;
 };
 
-export const getQuizQuestions = async (token, courseTitle) => {
+export const getQuizQuestions = async (token, courseTitle, difficulty) => {
   try {
     const siteId = await getSiteId(token);
     const res = await axios.get(
-      `${GRAPH}/sites/${siteId}/lists/Quiz%20Questions/items?$expand=fields&$filter=fields/CourseTitle eq '${(courseTitle||'').replace(/'/g,"''")}'&$top=50`,
+      `${GRAPH}/sites/${siteId}/lists/Quiz%20Questions/items?$expand=fields&$filter=fields/CourseTitle eq '${(courseTitle||'').replace(/'/g,"''")}'&$top=200`,
       h(token)
     );
-    return (res.data.value || []).map(mapItem);
+    const all = (res.data.value || []).map(mapItem);
+    if (!difficulty) return all;
+    const want = String(difficulty).toLowerCase();
+    const filtered = all.filter(q => String(q.Difficulty || '').toLowerCase() === want);
+    // Fallback: if nothing is tagged at this difficulty, use all questions so a single-tier
+    // (un-tagged) quiz still works instead of silently auto-passing on an empty set.
+    return filtered.length ? filtered : all;
   } catch (e) {
     console.warn('getQuizQuestions error:', e?.response?.data?.error?.message || e.message);
     return [];
