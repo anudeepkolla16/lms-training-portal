@@ -80,4 +80,31 @@ Ensure-Field "Employee Enrollments" "CompletedDate" "DateTime"
 # 6. Column on existing Quiz Questions (difficulty tier: Medium / Hard)
 Ensure-Field "Quiz Questions" "Difficulty" "Text"
 
+# 7. Skills module — Org Level on UserRoles + three new lists
+Ensure-Field "UserRoles" "OrgLevel" "Text"
+
+Ensure-List "RoleSkills"
+Ensure-Field "RoleSkills" "Role"      "Text"
+Ensure-Field "RoleSkills" "Category"  "Text"
+Ensure-Field "RoleSkills" "Priority"  "Boolean"
+Ensure-Field "RoleSkills" "SortOrder" "Number"
+
+Ensure-List "RoleExpectations"
+Ensure-Field "RoleExpectations" "Role"          "Text"
+Ensure-Field "RoleExpectations" "OrgLevel"      "Text"
+Ensure-Field "RoleExpectations" "ExpectedLevel" "Number"
+
+Ensure-List "Skill Assessments"
+Ensure-Field "Skill Assessments" "Role"           "Text"
+Ensure-Field "Skill Assessments" "EmployeeID"     "Text"
+Ensure-Field "Skill Assessments" "OrgLevel"       "Text"
+Ensure-Field "Skill Assessments" "Cycle"          "Text"
+Ensure-Field "Skill Assessments" "ExpectedLevel"  "Number"
+Ensure-Field "Skill Assessments" "SelfLevel"      "Number"
+Ensure-Field "Skill Assessments" "SelfUncertain"  "Boolean"
+Ensure-Field "Skill Assessments" "ManagerLevel"   "Number"
+Ensure-Field "Skill Assessments" "Gap"            "Number"
+Ensure-Field "Skill Assessments" "State"          "Text"
+Ensure-Field "Skill Assessments" "ManagerNote"    "Note"
+
 Write-Host "`n✅ Provisioning complete."

@@ -75,6 +75,7 @@ doesn't exist the app degrades gracefully (the JD still completes; the signature
 | `JobRole` | Single line text | The JD dimension. |
 | `Department` | Single line text | Employee's department. |
 | `ManagerEmail` | Single line text | Routes that employee's assessment reviews. |
+| `OrgLevel` | Single line text (or Choice `OL1`..`OL5`) | Seniority band — sets the expected skill level in the Skills module. |
 
 Admins set these from **Admin Dashboard → Employee Profiles**.
 
@@ -96,6 +97,40 @@ Admins set these in the **Add / Edit Course** forms.
 | Column | Type | Notes |
 |---|---|---|
 | `Difficulty` | Single line text (or Choice `Medium`/`Hard`) | Quiz tier. `Medium` for 1–3 self-ratings (post-course quiz), `Hard` for 4–5 (challenge quiz). Set per question in **Admin → Quizzes**. Blank/single-tier courses use whatever exists. |
+
+## Skills module (People Transformation) — new lists
+
+A separate **🎯 Skills** area (alongside courses) where employees self-rate on the **priority skills for their role** against an **expected level (SL1–SL5)** that varies by **Org Level (OL1–OL5)**; managers calibrate and release; HoD/HR see roll-ups. Skills are maintained by Admin/HR per role (with a "seed starter skills" helper).
+
+### New list: `RoleSkills` (which skills matter per role)
+| Column | Type | Notes |
+|---|---|---|
+| `Title` | Single line text | Skill name. |
+| `Role` | Single line text | Job-role the skill belongs to. |
+| `Category` | Single line text | Optional grouping. |
+| `Priority` | Yes/No | Priority skill for the role. |
+| `SortOrder` | Number | Display order. |
+
+### New list: `RoleExpectations` (expected level per role × org level)
+| Column | Type | Notes |
+|---|---|---|
+| `Title` | Single line text | e.g. `Recruiter OL2`. |
+| `Role` | Single line text | Job-role. |
+| `OrgLevel` | Single line text | `OL1`..`OL5`. |
+| `ExpectedLevel` | Number | 1–5 (SL). If absent, a baseline OL→SL map is used. |
+
+### New list: `Skill Assessments` (per employee × skill × cycle)
+| Column | Type | Notes |
+|---|---|---|
+| `Title` | Single line text | Skill name. |
+| `Role` / `EmployeeID` / `OrgLevel` / `Cycle` | Single line text | Context. |
+| `ExpectedLevel` / `SelfLevel` / `ManagerLevel` / `Gap` | Number | Levels + gap. |
+| `SelfUncertain` | Yes/No | Employee unsure of self-rating. |
+| `State` | Single line text | `Submitted` / `Released`. |
+| `ManagerNote` | Multiple lines | Calibration note. |
+| `AssessmentDate` / `ReviewDate` | Date and Time | Set automatically. |
+
+**How it runs:** Admin/HR set skills + expected levels per role (Manage Skills) and each employee's `OrgLevel` (Employee Profiles) → employee self-rates each priority skill and submits → manager calibrates the levels and **releases** the path → HoD sees department roll-up (assessed / paths / avg gap / top gaps), HR sees function-by-function status. Until the lists exist the module runs on built-in sample data (Recruiter role).
 
 ## Access roles & dashboard scoping
 
