@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getQuizQuestions, saveQuizResult } from '../services/sharePointAPI';
 
-const QuizModal = ({ course, userEmail, accessToken, onClose, onComplete }) => {
+const QuizModal = ({ course, userEmail, accessToken, onClose, onComplete, difficulty, mode = 'standard' }) => {
+  const isChallenge = mode === 'challenge';
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState({});
   const [loading, setLoading] = useState(true);
@@ -18,25 +19,25 @@ const QuizModal = ({ course, userEmail, accessToken, onClose, onComplete }) => {
     const load = async () => {
       setLoading(true);
       try {
-        const qs = await getQuizQuestions(accessToken, course.Title);
+        const qs = await getQuizQuestions(accessToken, course.Title, difficulty);
         // Shuffle (on a copy) and take up to 10 random questions
         const shuffled = [...qs].sort(() => Math.random() - 0.5).slice(0, 10);
         if (shuffled.length === 0) {
-          // No questions — mark complete directly
-          onComplete(true);
+          // No questions authored — mark complete directly
+          onComplete(true, { score: 0, total: 0, percentage: 100, passed: true });
           return;
         }
         setQuestions(shuffled);
       } catch (e) {
         console.error('Error loading quiz:', e);
         setError('Could not load quiz. Course will be marked complete.');
-        setTimeout(() => onComplete(true), 2000);
+        setTimeout(() => onComplete(true, { score: 0, total: 0, percentage: 100, passed: true }), 2000);
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [accessToken, course.Title, onComplete]);
+  }, [accessToken, course.Title, difficulty, onComplete]);
 
   const handleAnswer = (questionId, option) => {
     setAnswers(prev => ({ ...prev, [questionId]: option }));
@@ -85,17 +86,8 @@ const QuizModal = ({ course, userEmail, accessToken, onClose, onComplete }) => {
     setSaving(false);
 
     if (passed) {
-      setTimeout(() => onComplete(true), 3000);
+      setTimeout(() => onComplete(true, quizResult), 3000);
     }
-  };
-
-  const handleRetry = () => {
-    setAnswers({});
-    setSubmitted(false);
-    setResult(null);
-    setCurrent(0);
-    const shuffled = [...questions].sort(() => Math.random() - 0.5);
-    setQuestions(shuffled);
   };
 
   if (loading) return (
@@ -159,8 +151,12 @@ const QuizModal = ({ course, userEmail, accessToken, onClose, onComplete }) => {
             color: result.passed ? '#065f46' : '#92400e'
           }}>
             {result.passed
-              ? '✅ Course marked as Complete! Great work!'
-              : '⚠️ You need 70% to pass. Review the material and try again.'}
+              ? (isChallenge
+                  ? '✅ You passed the challenge! Course marked complete and your manager has been notified.'
+                  : '✅ Course marked as Complete! Great work!')
+              : (isChallenge
+                  ? '⚠️ You didn\'t reach 70%. Your manager has been notified — you\'ll now need to take the course and pass its quiz.'
+                  : '⚠️ You didn\'t reach 70%. The quiz has ended — please take the course again, then retake the quiz.')}
           </div>
 
           {/* Answer Review */}
@@ -187,19 +183,11 @@ const QuizModal = ({ course, userEmail, accessToken, onClose, onComplete }) => {
           </div>
 
           <div style={{ display: 'flex', gap: '10px' }}>
-            {!result.passed && (
-              <button onClick={handleRetry} style={{
-                flex: 1, background: '#3b82f6', color: 'white', padding: '12px',
-                borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: '600'
-              }}>
-                🔄 Retry Quiz
-              </button>
-            )}
-            <button onClick={() => result.passed ? onComplete(true) : onClose()} style={{
-              flex: 1, background: result.passed ? '#10b981' : '#6b7280', color: 'white', padding: '12px',
+            <button onClick={() => onComplete(result.passed, result)} style={{
+              flex: 1, background: result.passed ? '#10b981' : '#3b82f6', color: 'white', padding: '12px',
               borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: '600'
             }}>
-              {result.passed ? '🎓 Finish' : 'Close'}
+              {result.passed ? '🎓 Finish' : '📖 Take the Course'}
             </button>
           </div>
         </div>
@@ -221,7 +209,7 @@ const QuizModal = ({ course, userEmail, accessToken, onClose, onComplete }) => {
         {/* Quiz Header */}
         <div style={{ marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px' }}>📝 {course.Title} — Quiz</h3>
+            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px' }}>📝 {course.Title} — {isChallenge ? 'Challenge ' : ''}Quiz{difficulty ? ` (${difficulty})` : ''}</h3>
             <span style={{ color: '#64748b', fontSize: '13px' }}>{current + 1} / {questions.length}</span>
           </div>
           {/* Progress Bar */}

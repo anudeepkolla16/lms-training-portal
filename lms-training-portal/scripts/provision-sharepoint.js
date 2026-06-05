@@ -10,6 +10,7 @@
  *   - List "JD Acknowledgements" + columns Role, EmployeeID, Signature, AcknowledgedDate
  *   - Columns added to existing "UserRoles":  JobRole, Department, ManagerEmail
  *   - Columns added to existing "Courses":    JobRoles, Departments, Mandatory
+ *   - Column  added to existing "Quiz Questions": Difficulty (Medium/Hard)
  *
  * Re-running is safe — anything that already exists is skipped.
  *
@@ -162,6 +163,10 @@ async function ensureColumns(siteId, listName, columns) {
     // 5. Column on existing Employee Enrollments
     console.log(`• ensuring columns on "Employee Enrollments"`);
     await ensureColumns(siteId, 'Employee Enrollments', [dateTime('CompletedDate')]);
+
+    // 6. Column on existing Quiz Questions (difficulty tier: Medium / Hard)
+    console.log(`• ensuring columns on "Quiz Questions"`);
+    await ensureColumns(siteId, 'Quiz Questions', [text('Difficulty')]);
 
     console.log('\n✅ Provisioning complete.');
   } catch (e) {

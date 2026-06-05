@@ -140,7 +140,7 @@ const AdminDashboard = ({ accessToken, user }) => {
   const [reminding, setReminding] = React.useState(false);
 
   // Quiz state
-  const [quizForm, setQuizForm] = React.useState({ CourseTitle: '', Question: '', OptionA: '', OptionB: '', OptionC: '', OptionD: '', CorrectAnswer: 'A' });
+  const [quizForm, setQuizForm] = React.useState({ CourseTitle: '', Question: '', OptionA: '', OptionB: '', OptionC: '', OptionD: '', CorrectAnswer: 'A', Difficulty: 'Medium' });
   const [quizResults, setQuizResults] = React.useState([]);
   const [quizResultsLoaded, setQuizResultsLoaded] = React.useState(false);
   const [quizSubmitting, setQuizSubmitting] = React.useState(false);
@@ -347,10 +347,11 @@ const AdminDashboard = ({ accessToken, user }) => {
         OptionB: quizForm.OptionB,
         OptionC: quizForm.OptionC,
         OptionD: quizForm.OptionD,
-        CorrectAnswer: quizForm.CorrectAnswer
+        CorrectAnswer: quizForm.CorrectAnswer,
+        Difficulty: quizForm.Difficulty
       });
       setMsg('Quiz question added successfully.');
-      setQuizForm({ CourseTitle: '', Question: '', OptionA: '', OptionB: '', OptionC: '', OptionD: '', CorrectAnswer: 'A' });
+      setQuizForm({ CourseTitle: '', Question: '', OptionA: '', OptionB: '', OptionC: '', OptionD: '', CorrectAnswer: 'A', Difficulty: 'Medium' });
     } catch {
       setMsg('Error adding quiz question. Please try again.');
     }
@@ -988,13 +989,21 @@ const AdminDashboard = ({ accessToken, user }) => {
                   <input style={inputStyle} value={quizForm[`Option${opt}`]} onChange={e => setQuizForm(f => ({ ...f, [`Option${opt}`]: e.target.value }))} required placeholder={`Option ${opt}`} />
                 </div>
               ))}
-              <div style={{ marginBottom: '20px' }}>
+              <div style={{ marginBottom: '14px' }}>
                 <label style={labelStyle}>Correct Answer *</label>
                 <select style={inputStyle} value={quizForm.CorrectAnswer} onChange={e => setQuizForm(f => ({ ...f, CorrectAnswer: e.target.value }))}>
                   {['A', 'B', 'C', 'D'].map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
                 </select>
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={labelStyle}>Difficulty *</label>
+                <select style={inputStyle} value={quizForm.Difficulty} onChange={e => setQuizForm(f => ({ ...f, Difficulty: e.target.value }))}>
+                  <option value="Medium">Medium — for self-rating 1–3 (post-course quiz)</option>
+                  <option value="Hard">Hard — for self-rating 4–5 (challenge quiz)</option>
+                </select>
+                <p style={{ margin: '5px 0 0', color: '#94a3b8', fontSize: '11px' }}>Author both tiers per course. If a course has only one tier, it's used for everyone.</p>
               </div>
               <button type="submit" style={btnStyle} disabled={quizSubmitting}>
                 {quizSubmitting ? 'Saving...' : 'Add Question'}
