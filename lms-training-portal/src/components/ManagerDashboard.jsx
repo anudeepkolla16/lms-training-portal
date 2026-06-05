@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, getQuizResults, updateAssessment, updateEnrollmentStatus, notifyCourseAssigned, notifyAssessmentReviewed, sendCompletionReminders, getAllUserProfiles, getAllSelfAssessments } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, getQuizResults, notifyCourseAssigned, sendCompletionReminders, getAllUserProfiles, getAllSelfAssessments } from '../services/sharePointAPI';
 import { downloadCSV } from '../utils/csv';
 
 
@@ -85,7 +85,6 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
   const [quizResults, setQuizResults] = React.useState([]);
   const [quizLoaded, setQuizLoaded] = React.useState(false);
   const [reviews, setReviews] = React.useState([]);
-  const [reviewEdits, setReviewEdits] = React.useState({});
   const [dept, setDept] = React.useState('');
   const [reminding, setReminding] = React.useState(false);
   const today = new Date();
@@ -123,44 +122,6 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
   }, [accessToken, isHOD, profiles, myDept, myEmail]);
 
   React.useEffect(() => { loadReviews(); }, [loadReviews]);
-
-  const findEnrollment = (review) => enrollments.find(e =>
-    (e.EmployeeID || '').toLowerCase() === (review.EmployeeID || '').toLowerCase() &&
-    (e.Title || '').toLowerCase() === (review.Title || '').toLowerCase());
-
-  // Apply a manager rating. < 4 → employee must redo (Remediation + course reopened + email);
-  // >= 4 → Approved (course stays Completed). Re-runnable so mistakes can be corrected.
-  const applyReview = async (review, ratingValue, comment) => {
-    const finalRating = Number(ratingValue);
-    const needsRedo = finalRating < 4;
-    setMsg('');
-    try {
-      await updateAssessment(accessToken, review.Id, {
-        AssessmentState: needsRedo ? 'Remediation' : 'Approved',
-        ManagerRating: finalRating,
-        ManagerComment: comment || review.ManagerComment || '',
-        ReviewDate: new Date().toISOString(),
-      });
-      const enr = findEnrollment(review);
-      // Reopen on redo; only (re)mark Completed if it isn't already — avoids re-stamping the completion date
-      if (enr) {
-        if (needsRedo) await updateEnrollmentStatus(accessToken, enr.Id, 'In Progress');
-        else if (enr.Status !== 'Completed') await updateEnrollmentStatus(accessToken, enr.Id, 'Completed');
-      }
-      notifyAssessmentReviewed(accessToken, review.EmployeeID, review.Title, finalRating, needsRedo); // best-effort
-      setMsg(`Saved: ${(review.EmployeeID || '').split('@')[0]} — ${review.Title} → ${finalRating}/5${needsRedo ? ' (sent back for redo, employee notified)' : ' (approved)'}.`);
-      await loadReviews();
-      setEnrollments(await getAllEnrollments(accessToken));
-    } catch {
-      setMsg('Error saving review. Please try again.');
-    }
-  };
-
-  const handleReview = (review, action) => {
-    const edit = reviewEdits[review.Id] || {};
-    const finalRating = action === 'adjust' ? (edit.rating || review.SelfRating) : (review.ManagerRating || review.SelfRating);
-    applyReview(review, finalRating, edit.comment);
-  };
 
   React.useEffect(() => {
     const load = async () => {
@@ -252,15 +213,35 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
     setSubmitting(false);
   };
 
-  const pendingReviews = reviews.filter(a => a.AssessmentState === 'PendingManagerReview');
-  const reviewedAssessments = reviews
-    .filter(a => ['Approved', 'Remediation', 'RemediationQuizPassed'].includes(a.AssessmentState))
-    .sort((a, b) => new Date(b.ReviewDate || 0) - new Date(a.ReviewDate || 0));
+  // Self-assessments for the team, most recent first. 4–5 ratings carry a hard-challenge result.
+  const sortedReviews = [...reviews].sort((a, b) =>
+    new Date(b.ReviewDate || b.AssessmentDate || 0) - new Date(a.ReviewDate || a.AssessmentDate || 0));
+  const challengeCount = sortedReviews.filter(a => (a.SelfRating || 0) >= 4).length;
+
+  const stateMeta = (s) => ({
+    ChallengePending: { bg: '#ede9fe', color: '#5b21b6', text: 'Challenge pending' },
+    ChallengePassed: { bg: '#d1fae5', color: '#065f46', text: 'Passed → skipped' },
+    Remediation: { bg: '#fef3c7', color: '#92400e', text: 'Taking course' },
+    RemediationQuizPassed: { bg: '#d1fae5', color: '#065f46', text: 'Completed via course' },
+    Approved: { bg: '#d1fae5', color: '#065f46', text: 'Approved (legacy)' },
+    PendingManagerReview: { bg: '#dbeafe', color: '#1e40af', text: 'Pending (legacy)' },
+  }[s] || { bg: '#f3f4f6', color: '#374151', text: s || '—' });
+
+  const exportReviews = () => downloadCSV(
+    `assessment-reviews-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Employee', 'Course', 'Self-Rating', 'Challenge %', 'Challenge Result', 'Status', 'Date'],
+    sortedReviews.map(r => [
+      r.EmployeeID || '', r.Title || '', `${r.SelfRating || 0}/5`,
+      r.ChallengePercent != null ? `${r.ChallengePercent}%` : '',
+      r.ChallengeResult || '', stateMeta(r.AssessmentState).text,
+      (r.ReviewDate || r.AssessmentDate) ? new Date(r.ReviewDate || r.AssessmentDate).toLocaleDateString() : '',
+    ])
+  );
 
   const tabs = [
     { id: 'team', label: isHOD ? 'Department Progress' : 'Team Progress' },
     { id: 'assign', label: 'Assign Course' },
-    { id: 'reviews', label: `Assessment Reviews${pendingReviews.length ? ` (${pendingReviews.length})` : ''}` }
+    { id: 'reviews', label: `Assessment Reviews${sortedReviews.length ? ` (${sortedReviews.length})` : ''}` }
   ];
 
   if (loading) return (
@@ -486,92 +467,74 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
         </div>
       )}
 
-      {/* Assessment Reviews Tab */}
+      {/* Assessment Reviews Tab — read-only: self-ratings + challenge-quiz results */}
       {activeTab === 'reviews' && (
         <div>
-          <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 16px' }}>
-            These employees say they <strong>already know the topic and want to skip</strong>. Approve to mark the course complete (skip), or <strong style={{ color: '#991b1b' }}>set a rating below 4 to require them to take the training</strong>. The employee is emailed either way. Reviewed items stay below and can be changed.
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+            <p style={{ color: '#64748b', fontSize: '13px', margin: 0, maxWidth: '640px' }}>
+              Your team's self-assessment ratings. Employees who self-rate <strong>4–5</strong> take a <strong>hard challenge quiz</strong> — pass means they skip the course, fail means they take it. The score is shown here for your review (no action needed).
+            </p>
+            {sortedReviews.length > 0 && (
+              <button onClick={exportReviews} style={{ background: 'white', color: ACCENT, border: `1px solid ${ACCENT}`, padding: '8px 14px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>⬇ Export CSV</button>
+            )}
+          </div>
 
-          <h3 style={{ margin: '0 0 12px', color: '#1e293b', fontSize: '15px', fontWeight: '700' }}>Pending ({pendingReviews.length})</h3>
-          {pendingReviews.length === 0 ? (
+          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '20px' }}>
+            <StatCard label="Self-assessments" value={sortedReviews.length} icon="⭐" color={ACCENT} />
+            <StatCard label="Took challenge (4–5)" value={challengeCount} icon="💪" color="#7c3aed" />
+            <StatCard label="Challenge passed" value={sortedReviews.filter(a => a.ChallengeResult === 'Pass').length} icon="✅" color="#10b981" />
+            <StatCard label="Challenge failed" value={sortedReviews.filter(a => a.ChallengeResult === 'Fail').length} icon="❌" color="#ef4444" />
+          </div>
+
+          {sortedReviews.length === 0 ? (
             <div style={{ background: 'white', borderRadius: '12px', padding: '32px', textAlign: 'center', color: '#9ca3af', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-              No pending assessment reviews.
+              No self-assessments from your team yet.
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
-              {pendingReviews.map(r => {
-                const edit = reviewEdits[r.Id] || {};
-                const chosen = Number(edit.rating ?? r.SelfRating);
-                return (
-                  <div key={r.Id} style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', borderLeft: `4px solid ${ACCENT}` }}>
-                    <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>{(r.EmployeeID || '').split('@')[0]}</div>
-                    <div style={{ color: '#6b7280', fontSize: '12px', marginBottom: '10px' }}>{r.EmployeeID}</div>
-                    <div style={{ fontSize: '13px', color: '#374151', marginBottom: '10px' }}>📘 <strong>{r.Title}</strong></div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                      <span style={{ fontSize: '13px', color: '#64748b' }}>Self-rating:</span>
-                      <span style={{ fontSize: '16px', color: '#f59e0b', fontWeight: '700' }}>{'★'.repeat(r.SelfRating || 0)}{'☆'.repeat(5 - (r.SelfRating || 0))}</span>
-                    </div>
-                    {r.EmployeeComment && <div style={{ fontSize: '12px', color: '#6b7280', fontStyle: 'italic', marginBottom: '12px' }}>“{r.EmployeeComment}”</div>}
-
-                    <label style={labelStyle}>Final rating</label>
-                    <select style={{ ...inputStyle, marginBottom: '10px' }} value={edit.rating ?? r.SelfRating} onChange={e => setReviewEdits(p => ({ ...p, [r.Id]: { ...edit, rating: e.target.value } }))}>
-                      {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}{n < 4 ? ' — needs redo' : ''}</option>)}
-                    </select>
-                    <input style={{ ...inputStyle, marginBottom: '12px' }} placeholder="Comment (optional)" value={edit.comment || ''} onChange={e => setReviewEdits(p => ({ ...p, [r.Id]: { ...edit, comment: e.target.value } }))} />
-
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => handleReview(r, 'approve')} style={{ ...btnStyle, background: '#10b981', flex: 1, padding: '9px' }}>✅ Approve skip ({r.SelfRating})</button>
-                      <button onClick={() => handleReview(r, 'adjust')} style={{ ...btnStyle, flex: 1, padding: '9px', background: chosen < 4 ? '#ef4444' : ACCENT }}>{chosen < 4 ? '📚 Require training' : '✎ Save'}</button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Already reviewed — kept visible and editable in case of a mistake */}
-          {reviewedAssessments.length > 0 && (
-            <>
-              <h3 style={{ margin: '28px 0 12px', color: '#1e293b', fontSize: '15px', fontWeight: '700' }}>Reviewed ({reviewedAssessments.length})</h3>
-              <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr>{['Employee', 'Course', 'Rating', 'Status', 'Change rating'].map(h => (
-                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', background: '#fffbeb', color: '#374151', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}</tr></thead>
-                    <tbody>
-                      {reviewedAssessments.map(r => {
-                        const edit = reviewEdits[r.Id] || {};
-                        const meta = r.AssessmentState === 'Approved'
-                          ? { bg: '#d1fae5', color: '#065f46', text: 'Skipped (approved)' }
-                          : r.AssessmentState === 'Remediation'
-                            ? { bg: '#fef3c7', color: '#92400e', text: 'Training required' }
-                            : { bg: '#dbeafe', color: '#1e40af', text: 'Completed (trained)' };
-                        return (
-                          <tr key={r.Id}>
-                            <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#374151' }}>{(r.EmployeeID || '').split('@')[0]}</td>
-                            <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#374151' }}>{r.Title}</td>
-                            <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#374151', fontWeight: '600' }}>{r.ManagerRating ?? r.SelfRating}/5</td>
-                            <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
-                              <span style={{ background: meta.bg, color: meta.color, padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>{meta.text}</span>
-                            </td>
-                            <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
-                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                <select style={{ ...inputStyle, width: 'auto', padding: '5px 8px' }} value={edit.rating ?? (r.ManagerRating ?? r.SelfRating)} onChange={e => setReviewEdits(p => ({ ...p, [r.Id]: { ...edit, rating: e.target.value } }))}>
-                                  {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
-                                </select>
-                                <button onClick={() => applyReview(r, edit.rating ?? (r.ManagerRating ?? r.SelfRating), edit.comment)} style={{ ...btnStyle, padding: '6px 12px', fontSize: '13px' }}>Update</button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+            <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr>{['Employee', 'Course', 'Self-Rating', 'Challenge (Hard)', 'Status', 'Date'].map(h => (
+                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', background: '#fffbeb', color: '#374151', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}</tr></thead>
+                  <tbody>
+                    {sortedReviews.map(r => {
+                      const meta = stateMeta(r.AssessmentState);
+                      const hasChallenge = r.ChallengeResult || r.ChallengePercent != null;
+                      const passed = r.ChallengeResult === 'Pass';
+                      const when = r.ReviewDate || r.AssessmentDate;
+                      return (
+                        <tr key={r.Id}>
+                          <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#374151' }}>
+                            <div style={{ fontWeight: '600' }}>{(r.EmployeeID || '').split('@')[0]}</div>
+                            <div style={{ color: '#9ca3af', fontSize: '11px' }}>{r.EmployeeID}</div>
+                          </td>
+                          <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#374151' }}>{r.Title}</td>
+                          <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                            <span style={{ color: '#f59e0b', fontWeight: '700' }}>{'★'.repeat(r.SelfRating || 0)}{'☆'.repeat(5 - (r.SelfRating || 0))}</span>
+                            <span style={{ color: '#94a3b8', marginLeft: '6px' }}>{r.SelfRating || 0}/5</span>
+                          </td>
+                          <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
+                            {hasChallenge ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                <strong style={{ color: '#374151' }}>{r.ChallengePercent != null ? `${r.ChallengePercent}%` : '—'}</strong>
+                                <span style={{ background: passed ? '#d1fae5' : '#fee2e2', color: passed ? '#065f46' : '#991b1b', padding: '2px 9px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>{passed ? 'Pass' : 'Fail'}</span>
+                              </span>
+                            ) : (
+                              <span style={{ color: '#9ca3af', fontSize: '12px' }}>{(r.SelfRating || 0) >= 4 ? 'pending' : 'n/a (1–3)'}</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
+                            <span style={{ background: meta.bg, color: meta.color, padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>{meta.text}</span>
+                          </td>
+                          <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#64748b', whiteSpace: 'nowrap' }}>{when ? new Date(when).toLocaleDateString() : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            </>
+            </div>
           )}
         </div>
       )}

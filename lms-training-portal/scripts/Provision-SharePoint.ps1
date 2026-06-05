@@ -52,6 +52,10 @@ Ensure-Field "Self Assessments" "ManagerComment"  "Note"
 Ensure-Field "Self Assessments" "EmployeeComment" "Note"
 Ensure-Field "Self Assessments" "AssessmentDate"  "DateTime"
 Ensure-Field "Self Assessments" "ReviewDate"      "DateTime"
+Ensure-Field "Self Assessments" "ChallengeScore"   "Number"
+Ensure-Field "Self Assessments" "ChallengeTotal"   "Number"
+Ensure-Field "Self Assessments" "ChallengePercent" "Number"
+Ensure-Field "Self Assessments" "ChallengeResult"  "Text"
 
 # 2b. JD Acknowledgements (signed job-description sign-offs)
 Ensure-List "JD Acknowledgements"
