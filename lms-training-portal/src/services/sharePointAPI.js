@@ -489,20 +489,23 @@ export const notifyCourseAssigned = async (token, to, courseTitle, dueDate) => {
 };
 
 // Email an employee the outcome of their manager's review of a self-assessment.
-export const notifyAssessmentReviewed = async (token, to, courseTitle, rating, needsRedo) => {
+export const notifyAssessmentReviewed = async (token, to, courseTitle, rating, needsRedo, comment) => {
   if (!to) return false;
   const portal = PORTAL_URL();
+  const note = comment ? `<p>Manager's note: <em>“${comment}”</em></p>` : '';
   return sendMail(token, {
     to,
-    subject: needsRedo ? `Action needed: complete training "${courseTitle}"` : `Skip approved: ${courseTitle}`,
+    subject: needsRedo ? `Action needed: complete training "${courseTitle}"` : `Assessment approved: ${courseTitle}`,
     html: needsRedo
       ? `<p>Hi,</p>
-         <p>Your manager reviewed your skip request for <strong>${courseTitle}</strong> and set the rating to <strong>${rating}/5</strong>.</p>
-         <p>Because it is below 4, please <strong>take the training and pass the quiz</strong> in the Training Portal to complete it.</p>
+         <p>Your manager reviewed your self-assessment for <strong>${courseTitle}</strong> and set the rating to <strong>${rating}/5</strong>.</p>
+         <p>Please <strong>take the training and pass the quiz</strong> in the Training Portal to complete it.</p>
+         ${note}
          ${portal ? `<p><a href="${portal}">Open Training Portal</a></p>` : ''}
          <p>— Training Portal</p>`
       : `<p>Hi,</p>
-         <p>Your manager confirmed you already know <strong>${courseTitle}</strong> (rating <strong>${rating}/5</strong>) — it's marked complete and you can skip it. No further action needed.</p>
+         <p>Your manager approved your assessment for <strong>${courseTitle}</strong> (rating <strong>${rating}/5</strong>) — it's marked complete. No further action needed.</p>
+         ${note}
          <p>— Training Portal</p>`,
   });
 };
