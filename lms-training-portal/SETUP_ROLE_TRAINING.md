@@ -51,7 +51,11 @@ Admins can add/delete these from **Admin Dashboard → Org Roles (JD)**.
 | `ManagerComment` | Multiple lines of text | Optional. |
 | `EmployeeComment` | Multiple lines of text | Optional. |
 | `AssessmentDate` | Date and Time | Set automatically on submit. |
-| `ReviewDate` | Date and Time | Set automatically on manager action. |
+| `ReviewDate` | Date and Time | Set automatically on manager action / challenge completion. |
+| `ChallengeScore` | Number | Correct answers on the hard challenge quiz (4–5 ratings). |
+| `ChallengeTotal` | Number | Total questions in the challenge quiz. |
+| `ChallengePercent` | Number | Challenge quiz score %. |
+| `ChallengeResult` | Single line text | `Pass` / `Fail`. Shown in the manager's Assessment Reviews tab. |
 
 ## 2b. New list: `JD Acknowledgements` (signed JD sign-offs)
 Records each employee's signed acknowledgement of their role's job description. If this list
@@ -147,3 +151,5 @@ Each job-role can have a **JD document** that every employee in that role must r
    - Any quiz **failure** ends the quiz and sends the employee to the course (no in-quiz retry). Passing the post-course quiz completes it (`RemediationQuizPassed`).
 
    Quiz difficulty comes from the **`Difficulty`** column on `Quiz Questions` (`Medium` / `Hard`). Author both tiers per course; if only one tier exists it's used for everyone.
+
+   The reporting **Manager → Assessment Reviews** tab is **read-only**: it lists each team member's self-rating and, for 4–5 raters, their challenge-quiz score + Pass/Fail and outcome (with CSV export). No approve/reject step — managers are also emailed each challenge result.

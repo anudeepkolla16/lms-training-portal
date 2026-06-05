@@ -142,6 +142,10 @@ async function ensureColumns(siteId, listName, columns) {
       text('EmployeeComment', true),
       dateTime('AssessmentDate'),
       dateTime('ReviewDate'),
+      number('ChallengeScore'),
+      number('ChallengeTotal'),
+      number('ChallengePercent'),
+      text('ChallengeResult'),
     ]);
 
     // 2b. JD Acknowledgements (signed job-description sign-offs)

@@ -124,6 +124,21 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
     setShowPDF(!!course.CourseMaterials);
   };
 
+  // Store challenge-quiz detail on the assessment record so the manager's Assessment Reviews
+  // tab can show it. Best-effort & separate from the state update — a missing column (if the
+  // SharePoint list wasn't extended) must not block course completion.
+  const recordChallengeDetail = async (a, result, passed) => {
+    if (!a?.Id) return;
+    try {
+      await updateAssessment(accessToken, a.Id, {
+        ChallengeScore: result.score ?? 0,
+        ChallengeTotal: result.total ?? 0,
+        ChallengePercent: result.percentage ?? (passed ? 100 : 0),
+        ChallengeResult: passed ? 'Pass' : 'Fail',
+      });
+    } catch (e) { /* columns may not exist yet — non-blocking */ }
+  };
+
   const handleQuizComplete = async (passed, result = {}) => {
     setShowQuiz(false);
     const course = quizCourse;
@@ -144,10 +159,12 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
       }
       if (passed) {
         if (a?.Id) await updateAssessment(accessToken, a.Id, { AssessmentState: 'ChallengePassed', ManagerRating: meta.rating, ReviewDate: new Date().toISOString() });
+        await recordChallengeDetail(a, result, true);
         await handleMarkComplete(course.Id);
       } else {
         // Failed the challenge → must take the full course + quiz
         if (a?.Id) await updateAssessment(accessToken, a.Id, { AssessmentState: 'Remediation' });
+        await recordChallengeDetail(a, result, false);
         try { await updateEnrollmentStatus(accessToken, course.Id, 'In Progress'); } catch (e) { /* non-blocking */ }
         await reload();
         routeToCourse(course);
