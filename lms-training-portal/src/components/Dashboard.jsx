@@ -158,7 +158,8 @@ const Dashboard = ({ accessToken, user, userProfile }) => {
         });
       }
       if (passed) {
-        if (a?.Id) await updateAssessment(accessToken, a.Id, { AssessmentState: 'ChallengePassed', ManagerRating: meta.rating, ReviewDate: new Date().toISOString() });
+        // Note: ReviewDate/ManagerRating are left for the manager — they mark a row as "actioned".
+        if (a?.Id) await updateAssessment(accessToken, a.Id, { AssessmentState: 'ChallengePassed' });
         await recordChallengeDetail(a, result, true);
         await handleMarkComplete(course.Id);
       } else {

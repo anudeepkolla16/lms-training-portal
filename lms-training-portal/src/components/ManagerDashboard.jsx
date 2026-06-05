@@ -86,6 +86,7 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
   const [quizLoaded, setQuizLoaded] = React.useState(false);
   const [reviews, setReviews] = React.useState([]);
   const [reviewEdits, setReviewEdits] = React.useState({}); // { [id]: { rating, comment } }
+  const [reviewFilter, setReviewFilter] = React.useState('todo'); // 'todo' | 'all'
   const [dept, setDept] = React.useState('');
   const [reminding, setReminding] = React.useState(false);
   const today = new Date();
@@ -148,7 +149,7 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
         if (reject) await updateEnrollmentStatus(accessToken, enr.Id, 'In Progress');
         else if (enr.Status !== 'Completed') await updateEnrollmentStatus(accessToken, enr.Id, 'Completed');
       }
-      notifyAssessmentReviewed(accessToken, review.EmployeeID, review.Title, finalRating, reject); // best-effort
+      notifyAssessmentReviewed(accessToken, review.EmployeeID, review.Title, finalRating, reject, edit.comment); // best-effort
       setMsg(`Saved: ${(review.EmployeeID || '').split('@')[0]} — ${review.Title} → ${finalRating}/5 (${reject ? 'rejected, employee must take the course' : 'approved'}).`);
       await loadReviews();
       setEnrollments(await getAllEnrollments(accessToken));
@@ -248,9 +249,12 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
   };
 
   // Self-assessments for the team, most recent first. 4–5 ratings carry a hard-challenge result.
+  // A row is "actioned" once a manager approves/rejects it (only applyReview sets ReviewDate).
   const sortedReviews = [...reviews].sort((a, b) =>
     new Date(b.ReviewDate || b.AssessmentDate || 0) - new Date(a.ReviewDate || a.AssessmentDate || 0));
   const challengeCount = sortedReviews.filter(a => (a.SelfRating || 0) >= 4).length;
+  const pendingActionCount = sortedReviews.filter(a => !a.ReviewDate).length;
+  const displayedReviews = reviewFilter === 'todo' ? sortedReviews.filter(a => !a.ReviewDate) : sortedReviews;
 
   const stateMeta = (s) => ({
     ChallengePending: { bg: '#ede9fe', color: '#5b21b6', text: 'Challenge pending' },
@@ -264,7 +268,7 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
   const exportReviews = () => downloadCSV(
     `assessment-reviews-${new Date().toISOString().slice(0, 10)}.csv`,
     ['Employee', 'Course', 'Self-Rating', 'Challenge %', 'Challenge Result', 'Status', 'Date'],
-    sortedReviews.map(r => [
+    displayedReviews.map(r => [
       r.EmployeeID || '', r.Title || '', `${r.SelfRating || 0}/5`,
       r.ChallengePercent != null ? `${r.ChallengePercent}%` : '',
       r.ChallengeResult || '', stateMeta(r.AssessmentState).text,
@@ -275,7 +279,7 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
   const tabs = [
     { id: 'team', label: isHOD ? 'Department Progress' : 'Team Progress' },
     { id: 'assign', label: 'Assign Course' },
-    { id: 'reviews', label: `Assessment Reviews${sortedReviews.length ? ` (${sortedReviews.length})` : ''}` }
+    { id: 'reviews', label: `Assessment Reviews${pendingActionCount ? ` (${pendingActionCount})` : ''}` }
   ];
 
   if (loading) return (
@@ -508,9 +512,20 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
             <p style={{ color: '#64748b', fontSize: '13px', margin: 0, maxWidth: '680px' }}>
               Your team's self-assessment ratings + <strong>hard challenge-quiz</strong> results (4–5 raters). Set a rating and <strong style={{ color: '#065f46' }}>Approve</strong> (marks the course complete) or <strong style={{ color: '#991b1b' }}>Reject</strong> (reopens it — the employee must take the course). The employee is emailed either way; you can re-action any row.
             </p>
-            {sortedReviews.length > 0 && (
-              <button onClick={exportReviews} style={{ background: 'white', color: ACCENT, border: `1px solid ${ACCENT}`, padding: '8px 14px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>⬇ Export CSV</button>
-            )}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '7px', padding: '3px' }}>
+                {[{ id: 'todo', label: `Needs action (${pendingActionCount})` }, { id: 'all', label: `All (${sortedReviews.length})` }].map(f => (
+                  <button key={f.id} onClick={() => setReviewFilter(f.id)} style={{
+                    padding: '6px 12px', borderRadius: '5px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+                    background: reviewFilter === f.id ? 'white' : 'transparent', color: reviewFilter === f.id ? ACCENT : '#64748b',
+                    boxShadow: reviewFilter === f.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'
+                  }}>{f.label}</button>
+                ))}
+              </div>
+              {sortedReviews.length > 0 && (
+                <button onClick={exportReviews} style={{ background: 'white', color: ACCENT, border: `1px solid ${ACCENT}`, padding: '8px 14px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>⬇ Export CSV</button>
+              )}
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '20px' }}>
@@ -520,9 +535,9 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
             <StatCard label="Challenge failed" value={sortedReviews.filter(a => a.ChallengeResult === 'Fail').length} icon="❌" color="#ef4444" />
           </div>
 
-          {sortedReviews.length === 0 ? (
+          {displayedReviews.length === 0 ? (
             <div style={{ background: 'white', borderRadius: '12px', padding: '32px', textAlign: 'center', color: '#9ca3af', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-              No self-assessments from your team yet.
+              {reviewFilter === 'todo' ? 'Nothing awaiting your action. 🎉' : 'No self-assessments from your team yet.'}
             </div>
           ) : (
             <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
@@ -532,12 +547,12 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
                     <th key={h} style={{ padding: '10px 14px', textAlign: 'left', background: '#fffbeb', color: '#374151', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}</tr></thead>
                   <tbody>
-                    {sortedReviews.map(r => {
+                    {displayedReviews.map(r => {
                       const meta = stateMeta(r.AssessmentState);
                       const hasChallenge = r.ChallengeResult || r.ChallengePercent != null;
                       const passed = r.ChallengeResult === 'Pass';
                       const edit = reviewEdits[r.Id] || {};
-                      const reviewed = r.AssessmentState === 'Approved' || r.AssessmentState === 'Remediation';
+                      const reviewed = !!r.ReviewDate;
                       return (
                         <tr key={r.Id}>
                           <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', color: '#374151' }}>
@@ -562,15 +577,22 @@ const ManagerDashboard = ({ accessToken, user, userProfile, scope = 'reports' })
                           <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
                             <span style={{ background: meta.bg, color: meta.color, padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>{meta.text}</span>
                             {reviewed && <div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '3px' }}>by manager: {r.ManagerRating ?? r.SelfRating}/5</div>}
+                            {reviewed && r.ManagerComment && <div style={{ color: '#6b7280', fontSize: '11px', fontStyle: 'italic', marginTop: '2px' }}>“{r.ManagerComment}”</div>}
                           </td>
-                          <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', minWidth: '230px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
                               <select title="Rating to record" style={{ ...inputStyle, width: 'auto', padding: '5px 8px' }} value={edit.rating ?? (r.ManagerRating ?? r.SelfRating)} onChange={e => setReviewEdits(p => ({ ...p, [r.Id]: { ...edit, rating: e.target.value } }))}>
                                 {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}/5</option>)}
                               </select>
                               <button onClick={() => applyReview(r, 'approve')} style={{ background: '#10b981', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>✅ Approve</button>
                               <button onClick={() => applyReview(r, 'reject')} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>❌ Reject</button>
                             </div>
+                            <input
+                              value={edit.comment ?? (r.ManagerComment || '')}
+                              onChange={e => setReviewEdits(p => ({ ...p, [r.Id]: { ...edit, comment: e.target.value } }))}
+                              placeholder="Reason / note (sent to employee)"
+                              style={{ ...inputStyle, padding: '5px 8px', fontSize: '12px' }}
+                            />
                           </td>
                         </tr>
                       );
