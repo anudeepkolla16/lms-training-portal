@@ -349,15 +349,30 @@ export const seedJobDescriptions = async (token, roles = [], existingCourses = [
 export const saveJdAcknowledgement = async (token, { jdTitle, role, employee, signature }) => {
   try {
     const siteId = await getSiteId(token);
+    const emp = String(employee || '').toLowerCase();
+    const fields = {
+      Title: jdTitle,
+      Role: role || roleFromJdTitle(jdTitle),
+      EmployeeID: emp,
+      Signature: signature || '',
+      AcknowledgedDate: new Date().toISOString(),
+    };
+    // Idempotent: update an existing sign-off for the same employee + JD rather than adding a duplicate row.
+    const existing = await axios.get(
+      `${GRAPH}/sites/${siteId}/lists/JD%20Acknowledgements/items?$expand=fields&$top=5000`,
+      h(token)
+    );
+    const match = (existing.data?.value || []).map(mapItem).find(x =>
+      (x.EmployeeID || '').toLowerCase() === emp &&
+      (x.Title || '').toLowerCase() === String(jdTitle || '').toLowerCase()
+    );
+    if (match?.Id) {
+      await axios.patch(`${GRAPH}/sites/${siteId}/lists/JD%20Acknowledgements/items/${match.Id}`, { fields }, h(token));
+      return { Id: match.Id, id: match.Id, ...fields };
+    }
     const res = await axios.post(
       `${GRAPH}/sites/${siteId}/lists/JD%20Acknowledgements/items`,
-      { fields: {
-        Title: jdTitle,
-        Role: role || roleFromJdTitle(jdTitle),
-        EmployeeID: String(employee || '').toLowerCase(),
-        Signature: signature || '',
-        AcknowledgedDate: new Date().toISOString(),
-      } },
+      { fields },
       h(token)
     );
     return res.data;
