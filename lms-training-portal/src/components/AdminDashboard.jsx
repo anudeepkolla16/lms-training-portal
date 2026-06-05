@@ -114,13 +114,13 @@ const AdminDashboard = ({ accessToken, user }) => {
   const [loading, setLoading] = React.useState(true);
   const [msg, setMsg] = React.useState('');
 
-  const [courseForm, setCourseForm] = React.useState({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '', JobRoles: '', Departments: '', Mandatory: false });
+  const [courseForm, setCourseForm] = React.useState({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '', JobRoles: '', Departments: '', Skills: '', Mandatory: false });
   const [enrollForm, setEnrollForm] = React.useState({ EmployeeID: '', CourseTitle: '', Department: '', DueDate: '' });
   const [submitting, setSubmitting] = React.useState(false);
 
   // Edit course state
   const [editingCourse, setEditingCourse] = React.useState(null);
-  const [editForm, setEditForm] = React.useState({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '', JobRoles: '', Departments: '', Mandatory: false });
+  const [editForm, setEditForm] = React.useState({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '', JobRoles: '', Departments: '', Skills: '', Mandatory: false });
   const [editSubmitting, setEditSubmitting] = React.useState(false);
 
   // Org roles (JD taxonomy) + employee profiles
@@ -191,8 +191,8 @@ const AdminDashboard = ({ accessToken, user }) => {
   );
   const exportCourses = () => downloadCSV(
     `courses-${new Date().toISOString().slice(0, 10)}.csv`,
-    ['Title', 'Description', 'Duration', 'Department', 'CourseMaterials', 'JobRoles', 'Departments', 'Mandatory'],
-    filteredCourses.map(c => [c.Title || '', c.Description || '', c.Duration || '', c.Department || '', c.CourseMaterials || '', c.JobRoles || '', c.Departments || '', (c.Mandatory === true || c.Mandatory === 'true') ? 'Yes' : 'No'])
+    ['Title', 'Description', 'Duration', 'Department', 'CourseMaterials', 'JobRoles', 'Departments', 'Skills', 'Mandatory'],
+    filteredCourses.map(c => [c.Title || '', c.Description || '', c.Duration || '', c.Department || '', c.CourseMaterials || '', c.JobRoles || '', c.Departments || '', c.Skills || '', (c.Mandatory === true || c.Mandatory === 'true') ? 'Yes' : 'No'])
   );
   const exportQuiz = () => downloadCSV(
     `quiz-results-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -365,7 +365,7 @@ const AdminDashboard = ({ accessToken, user }) => {
     try {
       await createCourse(accessToken, courseForm);
       setMsg('Course created successfully.');
-      setCourseForm({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '', JobRoles: '', Departments: '', Mandatory: false });
+      setCourseForm({ Title: '', Description: '', Duration: '', Department: '', CourseMaterials: '', JobRoles: '', Departments: '', Skills: '', Mandatory: false });
       const c = await getCourses(accessToken);
       setCourses(c);
     } catch {
@@ -407,6 +407,7 @@ const AdminDashboard = ({ accessToken, user }) => {
       CourseMaterials: course.CourseMaterials || '',
       JobRoles: course.JobRoles || '',
       Departments: course.Departments || '',
+      Skills: course.Skills || '',
       Mandatory: course.Mandatory === true || course.Mandatory === 'true'
     });
     setMsg('');
@@ -539,8 +540,8 @@ const AdminDashboard = ({ accessToken, user }) => {
             title="Bulk add courses (CSV)"
             accent={ACCENT}
             templateName="courses-template.csv"
-            templateHeaders={['Title', 'Description', 'Duration', 'Department', 'CourseMaterials', 'JobRoles', 'Departments', 'Mandatory']}
-            sampleRows={[['Data Engineering 101', 'Intro to DE', '4 Hours', 'Engineering', '', 'Data Engineer;BI Analyst', 'Engineering', 'Yes']]}
+            templateHeaders={['Title', 'Description', 'Duration', 'Department', 'CourseMaterials', 'JobRoles', 'Departments', 'Skills', 'Mandatory']}
+            sampleRows={[['Data Engineering 101', 'Intro to DE', '4 Hours', 'Engineering', '', 'Data Engineer;BI Analyst', 'Engineering', 'Planning before execution', 'Yes']]}
             mapRow={(r) => r.Title ? ({ ...r, Mandatory: /^(yes|true|1)$/i.test(r.Mandatory || '') }) : null}
             onSubmitRow={(payload) => createCourse(accessToken, payload)}
             onDone={async () => setCourses(await getCourses(accessToken))}
@@ -630,6 +631,11 @@ const AdminDashboard = ({ accessToken, user }) => {
                   <label style={labelStyle}>🏢 Target Departments</label>
                   <input style={inputStyle} value={editForm.Departments} onChange={e => setEditForm(f => ({ ...f, Departments: e.target.value }))} placeholder="e.g. Engineering;Analytics" />
                 </div>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={labelStyle}>🎯 Related Skills</label>
+                  <input style={inputStyle} value={editForm.Skills} onChange={e => setEditForm(f => ({ ...f, Skills: e.target.value }))} placeholder="e.g. Planning before execution;AI fluency operational" />
+                  <small style={{ color: '#6b7280', fontSize: '12px' }}>Semicolon-separated. Used to recommend this course for skill gaps.</small>
+                </div>
                 <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <input id="editMandatory" type="checkbox" checked={!!editForm.Mandatory} onChange={e => setEditForm(f => ({ ...f, Mandatory: e.target.checked }))} />
                   <label htmlFor="editMandatory" style={{ ...labelStyle, marginBottom: 0 }}>🔒 Mandatory (auto-assign to matching employees)</label>
@@ -680,6 +686,11 @@ const AdminDashboard = ({ accessToken, user }) => {
               <div style={{ marginBottom: '14px' }}>
                 <label style={labelStyle}>🏢 Target Departments</label>
                 <input style={inputStyle} value={courseForm.Departments} onChange={e => setCourseForm(f => ({ ...f, Departments: e.target.value }))} placeholder="e.g. Engineering;Analytics" />
+              </div>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={labelStyle}>🎯 Related Skills</label>
+                <input style={inputStyle} value={courseForm.Skills} onChange={e => setCourseForm(f => ({ ...f, Skills: e.target.value }))} placeholder="e.g. Planning before execution;AI fluency operational" />
+                <small style={{ color: '#6b7280', fontSize: '12px' }}>Semicolon-separated. Used to recommend this course for skill gaps.</small>
               </div>
               <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <input id="addMandatory" type="checkbox" checked={!!courseForm.Mandatory} onChange={e => setCourseForm(f => ({ ...f, Mandatory: e.target.checked }))} />

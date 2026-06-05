@@ -3,6 +3,7 @@ import {
   getRoleSkills, createRoleSkill, updateRoleSkill, deleteRoleSkill, seedRoleSkills,
   getRoleExpectations, upsertRoleExpectation, getAllSkillAssessments, saveSkillAssessment,
   updateSkillAssessment, getAllUserProfiles, getOrgRoles, getCourses,
+  getMyEnrollments, enrollEmployee, coursesForSkill,
   SKILL_LEVELS, ORG_LEVELS, CURRENT_CYCLE, expectedLevelFor, skillGap, slCode,
 } from '../services/sharePointAPI';
 import { downloadCSV } from '../utils/csv';
@@ -107,7 +108,7 @@ const SkillsModule = ({ accessToken, user, userProfile, managesReports }) => {
 
       {msg && <div style={{ padding: '10px 14px', marginBottom: '16px', borderRadius: '8px', background: msg.startsWith('Error') ? '#fcebeb' : '#eaf3de', color: msg.startsWith('Error') ? '#a32d2d' : '#173404', fontSize: '14px' }}>{msg}</div>}
 
-      {tab === 'me' && <MySkills {...{ accessToken, myEmail, myJobRole, myOL, skillsForRole, expFor, assessmentFor, courses, user, setMsg, reload }} />}
+      {tab === 'me' && <MySkills {...{ accessToken, myEmail, myJobRole, myOL, myDept: userProfile?.department, skillsForRole, expFor, assessmentFor, courses, user, setMsg, reload }} />}
       {tab === 'calibrate' && <Calibrate {...{ accessToken, myEmail, profiles, skillsForRole, expFor, assessmentFor, olOf, setMsg, reload }} />}
       {tab === 'department' && <Rollup scopeLabel={userProfile?.department || 'your department'} people={profiles.filter(p => (p.Department || '').toLowerCase() === (userProfile?.department || '').toLowerCase())} {...{ skillsForRole, expFor, assessments, assessmentFor, olOf }} />}
       {tab === 'company' && <Company {...{ profiles, assessments, roleSkills }} />}
@@ -117,11 +118,27 @@ const SkillsModule = ({ accessToken, user, userProfile, managesReports }) => {
 };
 
 // ===================== Employee: My Skills =====================
-const MySkills = ({ accessToken, myEmail, myJobRole, myOL, skillsForRole, expFor, assessmentFor, courses, user, setMsg, reload }) => {
+const MySkills = ({ accessToken, myEmail, myJobRole, myOL, myDept, skillsForRole, expFor, assessmentFor, courses, user, setMsg, reload }) => {
   const skills = skillsForRole(myJobRole);
   const expected = expFor(myJobRole, myOL);
   const [edits, setEdits] = React.useState({}); // skill -> { level, uncertain }
   const [saving, setSaving] = React.useState(false);
+  const [enrolled, setEnrolled] = React.useState(new Set());
+  const [enrolling, setEnrolling] = React.useState('');
+
+  React.useEffect(() => {
+    getMyEnrollments(accessToken, myEmail).then(es => setEnrolled(new Set((es || []).map(e => (e.Title || '').toLowerCase())))).catch(() => {});
+  }, [accessToken, myEmail]);
+
+  const handleEnrol = async (course) => {
+    setEnrolling(course.Title); setMsg('');
+    try {
+      await enrollEmployee(accessToken, { Title: course.Title, EmployeeID: myEmail, Department: myDept || course.Department || '', Status: 'Not Started' });
+      setEnrolled(prev => new Set([...prev, (course.Title || '').toLowerCase()]));
+      setMsg(`Added “${course.Title}” to your training.`);
+    } catch (e) { setMsg('Error adding the course. Please try again.'); }
+    setEnrolling('');
+  };
 
   const valOf = (skill) => {
     const e = edits[skill.Title];
@@ -165,7 +182,6 @@ const MySkills = ({ accessToken, myEmail, myJobRole, myOL, skillsForRole, expFor
 
   // learning path = skills below expected
   const gaps = skills.map(s => ({ s, v: valOf(s) })).filter(({ s, v }) => skillGap(expected, v.level, v.uncertain) > 0);
-  const courseFor = (skillName) => courses.find(c => (c.Title || '').toLowerCase().includes((skillName.split(' ')[0] || '').toLowerCase()));
 
   return (
     <div>
@@ -215,18 +231,30 @@ const MySkills = ({ accessToken, myEmail, myJobRole, myOL, skillsForRole, expFor
       <p style={{ fontSize: '13px', color: '#5f5e5a', margin: '0 0 12px' }}>{gaps.length ? `${gaps.length} priority skill${gaps.length > 1 ? 's' : ''} to develop towards ${slCode(expected)}.` : 'No gaps — you meet expectations on every priority skill. 🎉'}</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {gaps.map(({ s, v }) => {
-          const c = courseFor(s.Title);
+          const recs = coursesForSkill(courses, s.Title).slice(0, 3);
           return (
             <div key={s.Id} style={{ ...card, padding: '12px 14px', borderRadius: '8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <p style={{ margin: 0, fontWeight: 600, fontSize: '14px' }}>{s.Title}</p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><SLPill value={v.level} expected={expected} uncertain={v.uncertain} /> → <SLPill value={expected} expected={expected} /></div>
               </div>
-              <ul style={{ margin: 0, paddingLeft: 20, fontSize: '13px', color: '#5f5e5a', lineHeight: 1.7 }}>
-                <li>Attend a session on <strong>{s.Title}</strong>{c ? <> — e.g. course “{c.Title}”</> : ''}</li>
-                <li>Self-study: {s.Title} fundamentals</li>
-                <li>Apply {s.Title} on live work and review with your manager</li>
-              </ul>
+              {recs.length === 0 ? (
+                <p style={{ margin: 0, fontSize: '13px', color: '#888780' }}>No matching course yet — ask HR/Admin to tag a course with this skill.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {recs.map(c => {
+                    const isEnrolled = enrolled.has((c.Title || '').toLowerCase());
+                    return (
+                      <div key={c.Id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: '#f7f6f3', borderRadius: '6px', padding: '7px 10px' }}>
+                        <span style={{ fontSize: '13px', color: '#1f1f1d' }}>📘 {c.Title}{c.Duration ? <span style={{ color: '#888780', marginLeft: 6 }}>· {c.Duration}</span> : null}</span>
+                        {isEnrolled
+                          ? <span style={{ fontSize: '12px', color: '#3b6d11', fontWeight: 600 }}>✓ In training</span>
+                          : <button onClick={() => handleEnrol(c)} disabled={enrolling === c.Title} style={{ background: ACCENT, color: 'white', border: 'none', padding: '5px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>{enrolling === c.Title ? 'Adding…' : '+ Add to training'}</button>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })}
