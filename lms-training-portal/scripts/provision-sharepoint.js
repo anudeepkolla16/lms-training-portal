@@ -11,6 +11,8 @@
  *   - Columns added to existing "UserRoles":  JobRole, Department, ManagerEmail
  *   - Columns added to existing "Courses":    JobRoles, Departments, Mandatory
  *   - Column  added to existing "Quiz Questions": Difficulty (Medium/Hard)
+ *   - Column  added to existing "UserRoles": OrgLevel (OL1..OL5)
+ *   - Lists "RoleSkills", "RoleExpectations", "Skill Assessments" (skills module)
  *
  * Re-running is safe — anything that already exists is skipped.
  *
@@ -171,6 +173,23 @@ async function ensureColumns(siteId, listName, columns) {
     // 6. Column on existing Quiz Questions (difficulty tier: Medium / Hard)
     console.log(`• ensuring columns on "Quiz Questions"`);
     await ensureColumns(siteId, 'Quiz Questions', [text('Difficulty')]);
+
+    // 7. Skills module — Org Level on UserRoles + three new lists
+    console.log(`• ensuring column "OrgLevel" on "UserRoles"`);
+    await ensureColumns(siteId, 'UserRoles', [text('OrgLevel')]);
+
+    await ensureList(siteId, 'RoleSkills', [
+      text('Role'), text('Category'), boolean('Priority'), number('SortOrder'),
+    ]);
+    await ensureList(siteId, 'RoleExpectations', [
+      text('Role'), text('OrgLevel'), number('ExpectedLevel'),
+    ]);
+    await ensureList(siteId, 'Skill Assessments', [
+      text('Role'), text('EmployeeID'), text('OrgLevel'), text('Cycle'),
+      number('ExpectedLevel'), number('SelfLevel'), boolean('SelfUncertain'),
+      number('ManagerLevel'), number('Gap'), text('State'), text('ManagerNote', true),
+      dateTime('AssessmentDate'), dateTime('ReviewDate'),
+    ]);
 
     console.log('\n✅ Provisioning complete.');
   } catch (e) {

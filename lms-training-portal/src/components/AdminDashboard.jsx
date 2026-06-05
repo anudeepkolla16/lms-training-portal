@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults, getOrgRoles, createOrgRole, deleteOrgRole, getAllUserProfiles, upsertUserProfile, notifyCourseAssigned, sendCompletionReminders, deleteEnrollment, upsertJobDescription, seedJobDescriptions, jdTitleFor, isJdPlaceholder } from '../services/sharePointAPI';
+import { getCourses, getAllEnrollments, enrollEmployee, createCourse, updateCourse, createQuizQuestion, getQuizResults, getOrgRoles, createOrgRole, deleteOrgRole, getAllUserProfiles, upsertUserProfile, notifyCourseAssigned, sendCompletionReminders, deleteEnrollment, upsertJobDescription, seedJobDescriptions, jdTitleFor, isJdPlaceholder, ORG_LEVELS } from '../services/sharePointAPI';
 import { downloadCSV } from '../utils/csv';
 import BulkUpload from './BulkUpload';
 
@@ -923,10 +923,10 @@ const AdminDashboard = ({ accessToken, user }) => {
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['Employee', 'Access Role', 'Job-Role (JD)', 'Department', 'Manager Email', ''].map(hh => <th key={hh} style={thStyle}>{hh}</th>)}</tr></thead>
+              <thead><tr>{['Employee', 'Access Role', 'Job-Role (JD)', 'Department', 'Org Level', 'Manager Email', ''].map(hh => <th key={hh} style={thStyle}>{hh}</th>)}</tr></thead>
               <tbody>
                 {filteredProfiles.length === 0 ? (
-                  <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No profiles found.</td></tr>
+                  <tr><td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#9ca3af', padding: '32px' }}>No profiles found.</td></tr>
                 ) : filteredProfiles.map(p => {
                   const email = p.Title;
                   const edit = profileEdits[email] || {};
@@ -945,6 +945,12 @@ const AdminDashboard = ({ accessToken, user }) => {
                       </td>
                       <td style={tdStyle}>
                         <input style={{ ...inputStyle, minWidth: '120px' }} value={val('Department', p.Department || '')} onChange={e => setEdit('Department', e.target.value)} placeholder="Department" />
+                      </td>
+                      <td style={tdStyle}>
+                        <select style={{ ...inputStyle, minWidth: '80px' }} value={val('OrgLevel', p.OrgLevel || '')} onChange={e => setEdit('OrgLevel', e.target.value)}>
+                          <option value="">—</option>
+                          {ORG_LEVELS.map(ol => <option key={ol} value={ol}>{ol}</option>)}
+                        </select>
                       </td>
                       <td style={tdStyle}>
                         <input style={{ ...inputStyle, minWidth: '160px' }} value={val('ManagerEmail', p.ManagerEmail || '')} onChange={e => setEdit('ManagerEmail', e.target.value)} placeholder="manager@company.com" />

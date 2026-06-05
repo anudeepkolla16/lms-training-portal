@@ -233,10 +233,11 @@ export const getUserProfile = async (token, userEmail) => {
       jobRole: f.JobRole || '',
       department: f.Department || '',
       managerEmail: f.ManagerEmail || '',
+      orgLevel: f.OrgLevel || '',
     };
   } catch (e) {
     console.warn('getUserProfile fallback:', e?.response?.data?.error?.message || e.message);
-    return MOCK_PROFILES[userEmail.toLowerCase()] || { role: 'Employee', jobRole: '', department: '', managerEmail: '' };
+    return MOCK_PROFILES[userEmail.toLowerCase()] || { role: 'Employee', jobRole: '', department: '', managerEmail: '', orgLevel: 'OL2' };
   }
 };
 
@@ -258,7 +259,7 @@ export const getAllUserProfiles = async (token) => {
 };
 
 // Create or update a UserRoles row (email is the Title key). Sets JobRole/Department/ManagerEmail (and Role if provided).
-export const upsertUserProfile = async (token, { email, Role, JobRole, Department, ManagerEmail }) => {
+export const upsertUserProfile = async (token, { email, Role, JobRole, Department, ManagerEmail, OrgLevel }) => {
   const siteId = await getSiteId(token);
   const lcEmail = (email || '').toLowerCase();
   const fields = {};
@@ -266,6 +267,7 @@ export const upsertUserProfile = async (token, { email, Role, JobRole, Departmen
   if (JobRole !== undefined) fields.JobRole = JobRole;
   if (Department !== undefined) fields.Department = Department;
   if (ManagerEmail !== undefined) fields.ManagerEmail = (ManagerEmail || '').toLowerCase();
+  if (OrgLevel !== undefined) fields.OrgLevel = OrgLevel;
   try {
     const res = await axios.get(
       `${GRAPH}/sites/${siteId}/lists/UserRoles/items?$expand=fields&$top=1000`,
@@ -718,4 +720,144 @@ export const createQuizQuestion = async (token, data) => {
     );
     return res.data;
   } catch (e) { console.error('createQuizQuestion error:', e?.response?.data || e.message); throw e; }
+};
+
+// ===================================================================================
+// People Transformation — skills / competency framework (new module, alongside courses)
+// ===================================================================================
+
+// Skill levels SL1–SL5 (SL3 = "Proficient" is the typical expected bar).
+export const SKILL_LEVELS = [
+  { v: 1, code: 'SL1', label: 'Novice' },
+  { v: 2, code: 'SL2', label: 'Developing' },
+  { v: 3, code: 'SL3', label: 'Proficient' },
+  { v: 4, code: 'SL4', label: 'Advanced' },
+  { v: 5, code: 'SL5', label: 'Expert' },
+];
+export const ORG_LEVELS = ['OL1', 'OL2', 'OL3', 'OL4', 'OL5'];
+export const CURRENT_CYCLE = 'Q4 2026';
+// Fallback expected skill level per org level when no explicit RoleExpectation row exists.
+export const DEFAULT_EXPECTED_BY_OL = { OL1: 2, OL2: 3, OL3: 3, OL4: 4, OL5: 5 };
+export const slCode = (v) => `SL${Math.max(1, Math.min(5, Math.round(Number(v) || 0)))}`;
+
+// Expected level for a (role, orgLevel) — explicit RoleExpectations row wins, else OL baseline.
+export const expectedLevelFor = (role, orgLevel, expectations = []) => {
+  const row = expectations.find(e =>
+    (e.Role || '').toLowerCase() === (role || '').toLowerCase() &&
+    (e.OrgLevel || '').toLowerCase() === (orgLevel || '').toLowerCase());
+  if (row && row.ExpectedLevel) return Number(row.ExpectedLevel);
+  return DEFAULT_EXPECTED_BY_OL[orgLevel] || 3;
+};
+
+// Gap = how far below expected (uncertain self-rating counts one level lower). Never negative.
+export const skillGap = (expected, level, uncertain) => {
+  const eff = (Number(level) || 0) - (uncertain ? 1 : 0);
+  return Math.max(0, (Number(expected) || 0) - eff);
+};
+
+const MOCK_ROLE_SKILLS = [
+  'Understanding the customer deeply', 'For Whom and Why', 'Writing for Action',
+  'Communicating across seniority', 'Planning before execution', 'Prioritisation and sequencing',
+  'AI fluency operational', 'Driving accountability', 'Quality standards', 'Outcome orientation',
+].map((name, i) => ({ Id: i + 1, Title: name, Role: 'Recruiter', Category: 'Core', Priority: true, SortOrder: i + 1 }));
+
+// ---- Role skills (which skills matter for a role) ----
+export const getRoleSkills = async (token) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.get(`${GRAPH}/sites/${siteId}/lists/RoleSkills/items?$expand=fields&$top=2000`, h(token));
+    return (res.data.value || []).map(mapItem);
+  } catch (e) {
+    console.warn('getRoleSkills fallback:', e?.response?.data?.error?.message || e.message);
+    return MOCK_ROLE_SKILLS;
+  }
+};
+
+export const createRoleSkill = async (token, { Title, Role, Category = '', Priority = true, SortOrder = 0 }) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.post(`${GRAPH}/sites/${siteId}/lists/RoleSkills/items`,
+      { fields: { Title, Role, Category, Priority: !!Priority, SortOrder: Number(SortOrder) || 0 } }, h(token));
+    return res.data;
+  } catch (e) { console.error('createRoleSkill error:', e?.response?.data || e.message); throw e; }
+};
+
+export const updateRoleSkill = async (token, id, fields) => {
+  try {
+    const siteId = await getSiteId(token);
+    await axios.patch(`${GRAPH}/sites/${siteId}/lists/RoleSkills/items/${id}`, { fields }, h(token));
+  } catch (e) { console.error('updateRoleSkill error:', e?.response?.data || e.message); throw e; }
+};
+
+export const deleteRoleSkill = async (token, id) => {
+  try {
+    const siteId = await getSiteId(token);
+    await axios.delete(`${GRAPH}/sites/${siteId}/lists/RoleSkills/items/${id}`, h(token));
+  } catch (e) { console.error('deleteRoleSkill error:', e?.response?.data || e.message); throw e; }
+};
+
+// A small starter set so admins aren't staring at a blank role (they then edit/extend).
+const STARTER_SKILLS = ['Domain knowledge', 'Communication', 'Planning and prioritisation', 'AI fluency', 'Driving accountability', 'Quality and outcome orientation'];
+export const seedRoleSkills = async (token, role, existing = []) => {
+  const have = new Set(existing.filter(s => (s.Role || '').toLowerCase() === (role || '').toLowerCase()).map(s => (s.Title || '').toLowerCase()));
+  let created = 0;
+  for (let i = 0; i < STARTER_SKILLS.length; i++) {
+    if (have.has(STARTER_SKILLS[i].toLowerCase())) continue;
+    try { await createRoleSkill(token, { Title: STARTER_SKILLS[i], Role: role, Category: 'Core', Priority: true, SortOrder: i + 1 }); created++; } catch (e) { /* logged */ }
+  }
+  return created;
+};
+
+// ---- Expected levels per (role, org level) ----
+export const getRoleExpectations = async (token) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.get(`${GRAPH}/sites/${siteId}/lists/RoleExpectations/items?$expand=fields&$top=2000`, h(token));
+    return (res.data.value || []).map(mapItem);
+  } catch (e) {
+    console.warn('getRoleExpectations fallback:', e?.response?.data?.error?.message || e.message);
+    return [];
+  }
+};
+
+export const upsertRoleExpectation = async (token, { Role, OrgLevel, ExpectedLevel }, existing = []) => {
+  try {
+    const siteId = await getSiteId(token);
+    const match = existing.find(e => (e.Role || '').toLowerCase() === (Role || '').toLowerCase() && (e.OrgLevel || '').toLowerCase() === (OrgLevel || '').toLowerCase());
+    const fields = { Title: `${Role} ${OrgLevel}`, Role, OrgLevel, ExpectedLevel: Number(ExpectedLevel) || 3 };
+    if (match?.Id) { await axios.patch(`${GRAPH}/sites/${siteId}/lists/RoleExpectations/items/${match.Id}`, { fields }, h(token)); return { ...match, ...fields }; }
+    const res = await axios.post(`${GRAPH}/sites/${siteId}/lists/RoleExpectations/items`, { fields }, h(token));
+    return res.data;
+  } catch (e) { console.error('upsertRoleExpectation error:', e?.response?.data || e.message); throw e; }
+};
+
+// ---- Skill assessments (per employee × skill × cycle) ----
+const mapAssessments = (rows) => (rows || []).map(mapItem);
+export const getAllSkillAssessments = async (token) => {
+  try {
+    const siteId = await getSiteId(token);
+    const res = await axios.get(`${GRAPH}/sites/${siteId}/lists/Skill%20Assessments/items?$expand=fields&$top=5000`, h(token));
+    return mapAssessments(res.data.value);
+  } catch (e) {
+    console.warn('getAllSkillAssessments fallback:', e?.response?.data?.error?.message || e.message);
+    return [];
+  }
+};
+
+export const getMySkillAssessments = async (token, userEmail) => {
+  const me = (userEmail || '').toLowerCase();
+  const all = await getAllSkillAssessments(token);
+  return all.filter(a => (a.EmployeeID || '').toLowerCase() === me);
+};
+
+export const saveSkillAssessment = async (token, data) => {
+  const siteId = await getSiteId(token);
+  const fields = { ...data, EmployeeID: (data.EmployeeID || '').toLowerCase(), AssessmentDate: new Date().toISOString() };
+  const res = await axios.post(`${GRAPH}/sites/${siteId}/lists/Skill%20Assessments/items`, { fields }, h(token));
+  return res.data;
+};
+
+export const updateSkillAssessment = async (token, id, fields) => {
+  const siteId = await getSiteId(token);
+  await axios.patch(`${GRAPH}/sites/${siteId}/lists/Skill%20Assessments/items/${id}`, { fields }, h(token));
 };

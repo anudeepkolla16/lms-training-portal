@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import HRDashboard from './components/HRDashboard';
 import ManagerDashboard from './components/ManagerDashboard';
+import SkillsModule from './components/SkillsModule';
 import { getUserProfile, getAllUserProfiles } from './services/sharePointAPI';
 import './App.css';
 
@@ -127,6 +128,7 @@ const AppContent = () => {
 
   const VIEW_META = {
     training: { label: '📚 My Training', color: '#10b981', grad: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' },
+    skills:   { label: '🎯 Skills',      color: '#0d9488', grad: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)' },
     manager:  { label: '👥 My Team',     color: '#f59e0b', grad: 'linear-gradient(135deg, #f59e0b 0%, #fb923c 100%)' },
     hod:      { label: '🏢 Department',  color: '#0d9488', grad: 'linear-gradient(135deg, #0d9488 0%, #0891b2 100%)' },
     hr:       { label: '📊 HR Analytics', color: '#8b5cf6', grad: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)' },
@@ -134,7 +136,7 @@ const AppContent = () => {
   };
 
   // Views this user can access — a person may hold several (e.g. Admin who also manages reports).
-  const availableViews = ['training'];
+  const availableViews = ['training', 'skills'];
   if (managesReports || userRole === 'Manager') availableViews.push('manager');
   if (userRole === 'HOD') availableViews.push('hod');
   if (userRole === 'HR') availableViews.push('hr');
@@ -156,6 +158,7 @@ const AppContent = () => {
       case 'hr': return <HRDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
       case 'manager': return <ManagerDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} scope="reports" />;
       case 'hod': return <ManagerDashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} scope="department" />;
+      case 'skills': return <SkillsModule accessToken={accessToken} user={accounts[0]} userProfile={userProfile} managesReports={managesReports} />;
       default: return <Dashboard accessToken={accessToken} user={accounts[0]} userProfile={userProfile} />;
     }
   };
