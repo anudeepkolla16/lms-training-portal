@@ -185,8 +185,19 @@ const MySkills = ({ accessToken, myEmail, myJobRole, myOL, myDept, skillsForRole
     </div>;
   }
 
-  // learning path = skills below expected
-  const gaps = skills.map(s => ({ s, v: valOf(s) })).filter(({ s, v }) => skillGap(expected, v.level, v.uncertain) > 0);
+  // confirmed level = manager's calibrated level once released, else the self-rating
+  const confirmedVal = (skill) => {
+    const a = assessmentFor(myEmail, skill.Title);
+    const self = a && a.SelfLevel != null && a.SelfLevel !== '' ? Number(a.SelfLevel) : null;
+    const unsure = a && (a.SelfUncertain === true || a.SelfUncertain === 'true' || a.SelfUncertain === 'Yes');
+    const mgr = a && a.ManagerLevel != null && a.ManagerLevel !== '' ? Number(a.ManagerLevel) : self;
+    return { self, unsure, mgr };
+  };
+  // learning path = skills below expected (against the confirmed level once calibrated)
+  const gaps = (anyReleased
+    ? skills.map(s => { const c = confirmedVal(s); return { s, level: c.mgr != null ? c.mgr : expected, uncertain: false }; })
+    : skills.map(s => { const v = valOf(s); return { s, level: v.level, uncertain: v.uncertain }; })
+  ).filter(g => skillGap(expected, g.level, g.uncertain) > 0);
 
   return (
     <div>
@@ -200,48 +211,77 @@ const MySkills = ({ accessToken, myEmail, myJobRole, myOL, myDept, skillsForRole
         </div>
         <span style={{ background: '#faeeda', color: '#854f0b', fontSize: '12px', padding: '4px 10px', borderRadius: '8px', fontWeight: 600 }}>{statusLabel}</span>
       </div>
-      <p style={{ fontSize: '14px', color: '#5f5e5a', marginBottom: '12px' }}>Rate yourself on each priority skill. Expected level for {myJobRole} {myOL} is <strong>{slCode(expected)}</strong>.</p>
+      <p style={{ fontSize: '14px', color: '#5f5e5a', marginBottom: '12px' }}>
+        {anyReleased
+          ? <>Your manager has <strong>calibrated and released</strong> your levels for {CURRENT_CYCLE}. Expected level for {myJobRole} {myOL} is <strong>{slCode(expected)}</strong>.</>
+          : <>Rate yourself on each priority skill. Expected level for {myJobRole} {myOL} is <strong>{slCode(expected)}</strong>.</>}
+      </p>
 
-      <div style={{ ...card, overflow: 'hidden', marginBottom: '20px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr><th style={th}>Priority skill</th><th style={{ ...th, textAlign: 'center' }}>Expected</th><th style={{ ...th, textAlign: 'center' }}>Self-rating</th><th style={{ ...th, textAlign: 'center' }}>Gap</th></tr></thead>
-          <tbody>
-            {skills.map(s => {
-              const v = valOf(s);
-              const gap = skillGap(expected, v.level, v.uncertain);
-              return (
-                <tr key={s.Id}>
-                  <td style={td}>{s.Title}{s.Category ? <span style={{ color: '#888780', fontSize: '11px', marginLeft: 6 }}>{s.Category}</span> : null}</td>
-                  <td style={{ ...td, textAlign: 'center' }}><SLPill value={expected} expected={expected} /></td>
-                  <td style={{ ...td, textAlign: 'center' }}>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                      {levelSelect(v.level, e => setVal(s, { level: Number(e.target.value) }))}
-                      <label style={{ fontSize: 11, color: '#888780', display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
-                        <input type="checkbox" checked={v.uncertain} onChange={e => setVal(s, { uncertain: e.target.checked })} /> unsure
-                      </label>
-                    </div>
-                  </td>
-                  <td style={{ ...td, textAlign: 'center' }}><GapBadge gap={gap} /></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <button onClick={submit} disabled={saving} style={{ background: ACCENT, color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '14px', marginBottom: '24px' }}>
-        {saving ? 'Saving…' : 'Submit self-assessment'}
-      </button>
+      {anyReleased ? (
+        <div style={{ ...card, overflow: 'hidden', marginBottom: '20px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th style={th}>Priority skill</th><th style={{ ...th, textAlign: 'center' }}>Expected</th><th style={{ ...th, textAlign: 'center' }}>Your self</th><th style={{ ...th, textAlign: 'center' }}>Manager (confirmed)</th><th style={{ ...th, textAlign: 'center' }}>Gap</th></tr></thead>
+            <tbody>
+              {skills.map(s => {
+                const c = confirmedVal(s);
+                const level = c.mgr != null ? c.mgr : expected;
+                return (
+                  <tr key={s.Id}>
+                    <td style={td}>{s.Title}{s.Category ? <span style={{ color: '#888780', fontSize: '11px', marginLeft: 6 }}>{s.Category}</span> : null}</td>
+                    <td style={{ ...td, textAlign: 'center' }}><SLPill value={expected} expected={expected} /></td>
+                    <td style={{ ...td, textAlign: 'center' }}>{c.self != null ? <SLPill value={c.self} expected={expected} uncertain={c.unsure} /> : <span style={{ color: '#888780' }}>—</span>}</td>
+                    <td style={{ ...td, textAlign: 'center' }}><SLPill value={level} expected={expected} /></td>
+                    <td style={{ ...td, textAlign: 'center' }}><GapBadge gap={skillGap(expected, level, false)} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <>
+          <div style={{ ...card, overflow: 'hidden', marginBottom: '20px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr><th style={th}>Priority skill</th><th style={{ ...th, textAlign: 'center' }}>Expected</th><th style={{ ...th, textAlign: 'center' }}>Self-rating</th><th style={{ ...th, textAlign: 'center' }}>Gap</th></tr></thead>
+              <tbody>
+                {skills.map(s => {
+                  const v = valOf(s);
+                  const gap = skillGap(expected, v.level, v.uncertain);
+                  return (
+                    <tr key={s.Id}>
+                      <td style={td}>{s.Title}{s.Category ? <span style={{ color: '#888780', fontSize: '11px', marginLeft: 6 }}>{s.Category}</span> : null}</td>
+                      <td style={{ ...td, textAlign: 'center' }}><SLPill value={expected} expected={expected} /></td>
+                      <td style={{ ...td, textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          {levelSelect(v.level, e => setVal(s, { level: Number(e.target.value) }))}
+                          <label style={{ fontSize: 11, color: '#888780', display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
+                            <input type="checkbox" checked={v.uncertain} onChange={e => setVal(s, { uncertain: e.target.checked })} /> unsure
+                          </label>
+                        </div>
+                      </td>
+                      <td style={{ ...td, textAlign: 'center' }}><GapBadge gap={gap} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={submit} disabled={saving} style={{ background: ACCENT, color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '14px', marginBottom: '24px' }}>
+            {saving ? 'Saving…' : 'Submit self-assessment'}
+          </button>
+        </>
+      )}
 
       <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 6px' }}>Your personal learning path</h3>
       <p style={{ fontSize: '13px', color: '#5f5e5a', margin: '0 0 12px' }}>{gaps.length ? `${gaps.length} priority skill${gaps.length > 1 ? 's' : ''} to develop towards ${slCode(expected)}.` : 'No gaps — you meet expectations on every priority skill. 🎉'}</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {gaps.map(({ s, v }) => {
+        {gaps.map(({ s, level, uncertain }) => {
           const recs = coursesForSkill(courses, s.Title).slice(0, 3);
           return (
             <div key={s.Id} style={{ ...card, padding: '12px 14px', borderRadius: '8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <p style={{ margin: 0, fontWeight: 600, fontSize: '14px' }}>{s.Title}</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><SLPill value={v.level} expected={expected} uncertain={v.uncertain} /> → <SLPill value={expected} expected={expected} /></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><SLPill value={level} expected={expected} uncertain={uncertain} /> → <SLPill value={expected} expected={expected} /></div>
               </div>
               {recs.length === 0 ? (
                 <p style={{ margin: 0, fontSize: '13px', color: '#888780' }}>No matching course yet — ask HR/Admin to tag a course with this skill.</p>
