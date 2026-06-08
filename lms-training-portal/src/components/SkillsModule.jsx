@@ -198,6 +198,8 @@ const MySkills = ({ accessToken, myEmail, myJobRole, myOL, myDept, skillsForRole
     ? skills.map(s => { const c = confirmedVal(s); return { s, level: c.mgr != null ? c.mgr : expected, uncertain: false }; })
     : skills.map(s => { const v = valOf(s); return { s, level: v.level, uncertain: v.uncertain }; })
   ).filter(g => skillGap(expected, g.level, g.uncertain) > 0);
+  // the manager's calibration note (same across the employee's released rows)
+  const calibNote = (() => { for (const s of skills) { const a = assessmentFor(myEmail, s.Title); if (a && a.ManagerNote) return a.ManagerNote; } return ''; })();
 
   return (
     <div>
@@ -218,26 +220,37 @@ const MySkills = ({ accessToken, myEmail, myJobRole, myOL, myDept, skillsForRole
       </p>
 
       {anyReleased ? (
-        <div style={{ ...card, overflow: 'hidden', marginBottom: '20px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><th style={th}>Priority skill</th><th style={{ ...th, textAlign: 'center' }}>Expected</th><th style={{ ...th, textAlign: 'center' }}>Your self</th><th style={{ ...th, textAlign: 'center' }}>Manager (confirmed)</th><th style={{ ...th, textAlign: 'center' }}>Gap</th></tr></thead>
-            <tbody>
-              {skills.map(s => {
-                const c = confirmedVal(s);
-                const level = c.mgr != null ? c.mgr : expected;
-                return (
-                  <tr key={s.Id}>
-                    <td style={td}>{s.Title}{s.Category ? <span style={{ color: '#888780', fontSize: '11px', marginLeft: 6 }}>{s.Category}</span> : null}</td>
-                    <td style={{ ...td, textAlign: 'center' }}><SLPill value={expected} expected={expected} /></td>
-                    <td style={{ ...td, textAlign: 'center' }}>{c.self != null ? <SLPill value={c.self} expected={expected} uncertain={c.unsure} /> : <span style={{ color: '#888780' }}>—</span>}</td>
-                    <td style={{ ...td, textAlign: 'center' }}><SLPill value={level} expected={expected} /></td>
-                    <td style={{ ...td, textAlign: 'center' }}><GapBadge gap={skillGap(expected, level, false)} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {calibNote && (
+            <div style={{ background: '#e6f1fb', border: '0.5px solid #378add', color: '#185fa5', borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '13px' }}>
+              <strong>Manager's calibration note:</strong> {calibNote}
+            </div>
+          )}
+          <div style={{ ...card, overflow: 'hidden', marginBottom: '20px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr><th style={th}>Priority skill</th><th style={{ ...th, textAlign: 'center' }}>Expected</th><th style={{ ...th, textAlign: 'center' }}>Your self</th><th style={{ ...th, textAlign: 'center' }}>Manager (confirmed)</th><th style={{ ...th, textAlign: 'center' }}>Gap</th></tr></thead>
+              <tbody>
+                {skills.map(s => {
+                  const c = confirmedVal(s);
+                  const level = c.mgr != null ? c.mgr : expected;
+                  const changed = c.self != null && c.self !== level;
+                  return (
+                    <tr key={s.Id}>
+                      <td style={td}>{s.Title}{s.Category ? <span style={{ color: '#888780', fontSize: '11px', marginLeft: 6 }}>{s.Category}</span> : null}</td>
+                      <td style={{ ...td, textAlign: 'center' }}><SLPill value={expected} expected={expected} /></td>
+                      <td style={{ ...td, textAlign: 'center' }}>{c.self != null ? <SLPill value={c.self} expected={expected} uncertain={c.unsure} /> : <span style={{ color: '#888780' }}>—</span>}</td>
+                      <td style={{ ...td, textAlign: 'center' }}>
+                        <SLPill value={level} expected={expected} />
+                        {changed && <div style={{ color: '#854f0b', fontSize: '11px', marginTop: 2 }}>{level > c.self ? '↑' : '↓'} adjusted from {slCode(c.self)}</div>}
+                      </td>
+                      <td style={{ ...td, textAlign: 'center' }}><GapBadge gap={skillGap(expected, level, false)} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : (
         <>
           <div style={{ ...card, overflow: 'hidden', marginBottom: '20px' }}>
