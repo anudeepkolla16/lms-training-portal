@@ -98,7 +98,20 @@ const AppContent = () => {
             Sign in to access your training dashboard
           </p>
           <button
-            onClick={() => instance.loginPopup({ scopes: ["User.Read"] }).catch(console.error)}
+            onClick={async () => {
+              try {
+                await instance.loginPopup({ scopes: ["User.Read"] });
+              } catch (e) {
+                // Popup blocked/closed/interrupted (common on managed browsers) → fall back to
+                // a full-page redirect login, which doesn't depend on popup windows or cookies.
+                const code = e?.errorCode || '';
+                if (['user_cancelled', 'popup_window_error', 'empty_window_error', 'block_nested_popups'].includes(code)) {
+                  try { await instance.loginRedirect({ scopes: ["User.Read"] }); } catch (e2) { console.error('Redirect login failed:', e2); }
+                } else {
+                  console.error('Login failed:', e);
+                }
+              }
+            }}
             style={{
               background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
               color: 'white', padding: '14px 32px', borderRadius: '10px',
