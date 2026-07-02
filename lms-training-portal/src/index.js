@@ -7,9 +7,10 @@ const msalConfig = {
   auth: {
     clientId: 'f0ba86a7-a739-4977-b9ba-1f1c1269f219',
     authority: 'https://login.microsoftonline.com/06d5c541-26b2-4dc8-ac6f-eeba90783202',
-    redirectUri: window.location.hostname === 'localhost'
-      ? 'http://localhost:3000'
-      : 'https://lms-training-portal.vercel.app',
+    // Must match the origin the app is served from (and be registered in Azure AD as a
+    // SPA redirect URI). Using the live origin keeps it correct on any domain — the custom
+    // domain (lms.sarasanalytics.com), the vercel.app URL, or localhost.
+    redirectUri: window.location.origin,
   },
   cache: {
     cacheLocation: "localStorage",
